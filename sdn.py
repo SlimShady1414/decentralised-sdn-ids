@@ -25,6 +25,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             'Average Packet Size', 'Fwd Header Length', 'Bwd Header Length',
             'Fwd Packets/s', 'Bwd Packets/s'
         ]
+        self.last_status = None
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -60,73 +61,67 @@ class SimpleSwitch13(app_manager.RyuApp):
                 del self.datapaths[datapath.id]
 
     def extract_features(self, pkt, tcp_pkt, udp_pkt):
-        # Initialize a list of zeros for all features
         features = [0] * len(self.features)
 
-        # Use appropriate attributes based on protocol (TCP/UDP)
         if tcp_pkt:
-            features[0] = tcp_pkt.window_size  # Init_Win_bytes_forward
-            features[1] = len(pkt)  # Fwd Packet Length Max
-            features[2] = len(pkt)  # Fwd Packet Length Mean
-            features[3] = len(pkt)  # Subflow Fwd Bytes
-            features[4] = len(pkt)  # Avg Fwd Segment Size
-            features[5] = 1  # Subflow Fwd Packets
-            features[6] = len(pkt)  # Total Length of Fwd Packets
-            features[7] = min(tcp_pkt.dst_port, tcp_pkt.src_port)  # Bwd Packet Length Min
-            features[8] = len(pkt)  # act_data_pkt_fwd
-            features[9] = len(pkt)  # Fwd IAT Std
-            features[10] = len(pkt)  # Flow Duration
-            features[11] = 1  # Total Fwd Packets
-            features[12] = 1  # Total Backward Packets
-            features[13] = len(pkt)  # Flow IAT Mean
-            features[14] = max(tcp_pkt.dst_port, tcp_pkt.src_port)  # Flow IAT Max
-            features[15] = min(tcp_pkt.dst_port, tcp_pkt.src_port)  # Flow IAT Min
-            features[16] = len(pkt)  # Fwd IAT Mean
-            features[17] = len(pkt)  # Bwd IAT Mean
-            features[18] = len(pkt)  # Packet Length Mean
-            features[19] = np.std([len(pkt)])  # Packet Length Std
-            features[20] = np.var([len(pkt)])  # Packet Length Variance
-            features[21] = np.mean([len(pkt)])  # Average Packet Size
-            features[22] = 1  # Fwd Header Length
-            features[23] = 1  # Bwd Header Length
-            features[24] = len(pkt)  # Fwd Packets/s
-            features[25] = len(pkt)  # Bwd Packets/s
+            features[0] = tcp_pkt.window_size
+            features[1] = len(pkt)
+            features[2] = len(pkt)
+            features[3] = len(pkt)
+            features[4] = len(pkt)
+            features[5] = 1
+            features[6] = len(pkt)
+            features[7] = min(tcp_pkt.dst_port, tcp_pkt.src_port)
+            features[8] = len(pkt)
+            features[9] = len(pkt)
+            features[10] = len(pkt)
+            features[11] = 1
+            features[12] = 1
+            features[13] = len(pkt)
+            features[14] = max(tcp_pkt.dst_port, tcp_pkt.src_port)
+            features[15] = min(tcp_pkt.dst_port, tcp_pkt.src_port)
+            features[16] = len(pkt)
+            features[17] = len(pkt)
+            features[18] = len(pkt)
+            features[19] = np.std([len(pkt)])
+            features[20] = np.var([len(pkt)])
+            features[21] = np.mean([len(pkt)])
+            features[22] = 1
+            features[23] = 1
+            features[24] = len(pkt)
+            features[25] = len(pkt)
         elif udp_pkt:
-            features[0] = udp_pkt.sport  # Init_Win_bytes_forward
-            features[1] = udp_pkt.length  # Fwd Packet Length Max
-            features[2] = udp_pkt.length  # Fwd Packet Length Mean
-            features[3] = udp_pkt.length  # Subflow Fwd Bytes
-            features[4] = udp_pkt.length  # Avg Fwd Segment Size
-            features[5] = 1  # Subflow Fwd Packets
-            features[6] = len(pkt)  # Total Length of Fwd Packets
-            features[7] = udp_pkt.sport  # Bwd Packet Length Min
-            features[8] = 1  # act_data_pkt_fwd
-            features[9] = len(pkt)  # Fwd IAT Std
-            features[10] = len(pkt)  # Flow Duration
-            features[11] = 1  # Total Fwd Packets
-            features[12] = 1  # Total Backward Packets
-            features[13] = len(pkt)  # Flow IAT Mean
-            features[14] = udp_pkt.sport  # Flow IAT Max
-            features[15] = udp_pkt.dport  # Flow IAT Min
-            features[16] = len(pkt)  # Fwd IAT Mean
-            features[17] = len(pkt)  # Bwd IAT Mean
-            features[18] = len(pkt)  # Packet Length Mean
-            features[19] = np.std([len(pkt)])  # Packet Length Std
-            features[20] = np.var([len(pkt)])  # Packet Length Variance
-            features[21] = np.mean([len(pkt)])  # Average Packet Size
-            features[22] = 1  # Fwd Header Length
-            features[23] = 1  # Bwd Header Length
-            features[24] = len(pkt)  # Fwd Packets/s
-            features[25] = len(pkt)  # Bwd Packets/s
+            features[0] = udp_pkt.sport
+            features[1] = udp_pkt.length
+            features[2] = udp_pkt.length
+            features[3] = udp_pkt.length
+            features[4] = udp_pkt.length
+            features[5] = 1
+            features[6] = len(pkt)
+            features[7] = udp_pkt.sport
+            features[8] = 1
+            features[9] = len(pkt)
+            features[10] = len(pkt)
+            features[11] = 1
+            features[12] = 1
+            features[13] = len(pkt)
+            features[14] = udp_pkt.sport
+            features[15] = udp_pkt.dport
+            features[16] = len(pkt)
+            features[17] = len(pkt)
+            features[18] = len(pkt)
+            features[19] = np.std([len(pkt)])
+            features[20] = np.var([len(pkt)])
+            features[21] = np.mean([len(pkt)])
+            features[22] = 1
+            features[23] = 1
+            features[24] = len(pkt)
+            features[25] = len(pkt)
 
         return features
 
     @set_ev_cls(ofp_event.EventOFPPacketIn, MAIN_DISPATCHER)
     def _packet_in_handler(self, ev):
-        if ev.msg.msg_len < ev.msg.total_len:
-            self.logger.debug("packet truncated: only %s of %s bytes",
-                              ev.msg.msg_len, ev.msg.total_len)
-
         msg = ev.msg
         datapath = msg.datapath
         ofproto = datapath.ofproto
@@ -140,8 +135,6 @@ class SimpleSwitch13(app_manager.RyuApp):
         src = eth.src
         dpid = datapath.id
         self.mac_to_port.setdefault(dpid, {})
-
-        self.logger.info("packet in %s %s %s %s", dpid, src, dst, in_port)
 
         self.mac_to_port[dpid][src] = in_port
 
@@ -176,14 +169,18 @@ class SimpleSwitch13(app_manager.RyuApp):
 
                 attack_type = attack_labels.get(prediction, 'Unknown')
 
-                if attack_type != 'Normal':
-                    self.logger.info("Attack detected: %s from %s", attack_type, src)
-                else:
-                    self.logger.info("Normal traffic detected from %s", src)
+                if attack_type != self.last_status:
+                    if attack_type != 'Normal':
+                        self.logger.info("Attack detected: %s from %s", attack_type, src)
+                    else:
+                        self.logger.info("Normal traffic detected from %s", src)
+                    self.last_status = attack_type
             except Exception as e:
                 self.logger.error("Error in feature scaling or prediction: %s", e)
         else:
-            self.logger.info("Non-IP or unsupported packet type received.")
+            if self.last_status != 'Non-IP or unsupported':
+                self.logger.info("Non-IP or unsupported packet type received.")
+                self.last_status = 'Non-IP or unsupported'
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -192,4 +189,3 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
-
