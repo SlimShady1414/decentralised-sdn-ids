@@ -1,14 +1,12 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
-from sklearn.tree import DecisionTreeClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, VotingClassifier
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-from sklearn.pipeline import Pipeline
-from sklearn.ensemble import VotingClassifier
 import joblib
+import requests
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
 
@@ -46,21 +44,12 @@ for file_path in file_paths:
         df = pd.read_csv(file_path, engine='python')
         print(f"Processing {file_path}...")
 
-        # Remove leading and trailing spaces from column names
         df.columns = df.columns.str.strip()
-
-        # Fill missing values in 'Flow Bytes/s' with the median value
         df['Flow Bytes/s'].fillna(df['Flow Bytes/s'].median(), inplace=True)
-
-        # Replace infinity values with a large finite number
         df.replace([np.inf, -np.inf], np.finfo(np.float32).max, inplace=True)
-
-        # Cap extremely large values
         max_value = np.finfo(np.float32).max
         df['Flow Bytes/s'] = df['Flow Bytes/s'].clip(lower=-max_value, upper=max_value)
         df['Flow Packets/s'] = df['Flow Packets/s'].clip(lower=-max_value, upper=max_value)
-
-        # Append to the combined DataFrame
         combined_df = pd.concat([combined_df, df])
 
     except Exception as e:
@@ -89,54 +78,45 @@ label_mapping = {
 
 combined_df['Label'] = combined_df['Label'].map(label_mapping)
 
-# Handle missing values in the target variable
 print("Handling missing values...")
 combined_df.dropna(subset=['Label'], inplace=True)
 print("Missing values handled.")
 print(f"Final label distribution:\n{combined_df['Label'].value_counts()}\n")
 
-# Split the data into features and target
 X = combined_df[features]
 y = combined_df['Label']
 
-# Split the data into training and testing sets
 print("Splitting data into training and testing sets...")
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 print(f"Training set label distribution:\n{y_train.value_counts()}")
 print("Data split complete.")
 
-# Controlled undersampling
 print("Applying controlled RandomUnderSampler...")
 undersample_strategy = {k: min(v, 50000) for k, v in y_train.value_counts().items()}
 rus = RandomUnderSampler(sampling_strategy=undersample_strategy, random_state=42)
 X_train_rus, y_train_rus = rus.fit_resample(X_train, y_train)
 print(f"Training set label distribution after controlled undersampling:\n{pd.Series(y_train_rus).value_counts()}")
 
-# Apply SMOTE to balance the classes in the training set
 print("Applying SMOTE to balance classes in the training set...")
 smote = SMOTE(sampling_strategy='auto', random_state=42)
 X_train_smote, y_train_smote = smote.fit_resample(X_train_rus, y_train_rus)
 print(f"Training set label distribution after SMOTE:\n{pd.Series(y_train_smote).value_counts()}")
 
-# Scale the features
 print("Scaling features...")
 scaler = StandardScaler()
 X_train_scaled = scaler.fit_transform(X_train_smote)
 X_test_scaled = scaler.transform(X_test)
 print("Feature scaling complete.")
 
-# Ensemble models setup
 print("Setting up ensemble models...")
 classifiers = [
     ('rf', RandomForestClassifier(random_state=42)),
     ('et', ExtraTreesClassifier(random_state=42)),
-    ('dt', DecisionTreeClassifier(random_state=42)),
     ('xgb', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'))
 ]
 
 ensemble = VotingClassifier(estimators=classifiers, voting='soft')
 
-# Hyperparameter tuning using GridSearchCV
 print("Starting hyperparameter tuning...")
 param_grid = {
     'rf__n_estimators': [50, 100],
@@ -148,10 +128,8 @@ grid_search = GridSearchCV(ensemble, param_grid, cv=5, scoring='accuracy', n_job
 grid_search.fit(X_train_scaled, y_train_smote)
 print("Hyperparameter tuning complete.")
 
-# Get the best model from the grid search
 model = grid_search.best_estimator_
 
-# Evaluate the model
 print("Evaluating the model...")
 y_pred = model.predict(X_test_scaled)
 accuracy = accuracy_score(y_test, y_pred)
@@ -163,8 +141,36 @@ print(f'Accuracy: {accuracy}')
 print(f'Confusion Matrix:\n{conf_matrix}')
 print(f'Classification Report:\n{class_report}')
 
-# Save the model and scaler
 print("Saving the model and scaler...")
 joblib.dump(model, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
 joblib.dump(scaler, '/mnt/SharedCapstone/feature_scaler_all_features.pkl')
 print("Model and scaler saved.")
+
+# Federated learning part: Generate predictions and send to server
+local_predictions = model.predict(X_test_scaled)
+
+response = requests.post('http://10.0.2.15:5000/update_predictions', json={'predictions': local_predictions.tolist()})
+
+print(response.json())
+
+response = requests.get('http://10.0.2.15:5000/get_aggregated_predictions')
+
+# Check if the response was successful and contains valid JSON
+if response.status_code == 200:
+    try:
+        global_predictions = np.array(response.json().get('aggregated_predictions', []))
+        if global_predictions.size > 0:
+            accuracy = accuracy_score(y_test, global_predictions)
+            print(f'Global Model Accuracy: {accuracy}')
+        else:
+            print("No aggregated predictions received from the server.")
+    except ValueError as e:
+        print(f"Error parsing JSON response: {e}")
+else:
+    print(f"Server error: {response.status_code}")
+
+joblib.dump(model, '/mnt/SharedCapstone/global_model.pkl')
+
+# Log the successful completion
+print("Training completed and global model saved successfully.")
+

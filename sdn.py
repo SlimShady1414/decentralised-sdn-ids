@@ -1,3 +1,4 @@
+import sys
 import joblib
 import numpy as np
 import pandas as pd
@@ -6,6 +7,10 @@ from ryu.controller import ofp_event
 from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cls
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp
+import requests
+
+# Increase the recursion limit to avoid RecursionError
+sys.setrecursionlimit(10000)
 
 class SimpleSwitch13(app_manager.RyuApp):
     OFP_VERSIONS = [ofproto_v1_3.OFP_VERSION]
@@ -13,7 +18,7 @@ class SimpleSwitch13(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        self.model = joblib.load('/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
+        self.model = joblib.load('/mnt/SharedCapstone/global_model.pkl')
         self.scaler = joblib.load('/mnt/SharedCapstone/feature_scaler_all_features.pkl')
         self.features = [
             'Init_Win_bytes_forward', 'Fwd Packet Length Max', 'Fwd Packet Length Mean',
@@ -26,6 +31,14 @@ class SimpleSwitch13(app_manager.RyuApp):
             'Fwd Packets/s', 'Bwd Packets/s'
         ]
         self.last_status = None
+
+    def update_model(self):
+        response = requests.get('http://10.0.2.15:5000/get_model', verify=False)
+        if response.status_code == 200:
+            global_model = joblib.loads(response.content)
+            self.model = global_model
+        else:
+            self.logger.error("Failed to fetch the global model")
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -49,16 +62,6 @@ class SimpleSwitch13(app_manager.RyuApp):
             mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                     match=match, instructions=inst)
         datapath.send_msg(mod)
-
-    @set_ev_cls(ofp_event.EventOFPStateChange, [MAIN_DISPATCHER, CONFIG_DISPATCHER])
-    def _state_change_handler(self, ev):
-        datapath = ev.datapath
-        if ev.state == MAIN_DISPATCHER:
-            self.logger.info("Switch connected: %s", datapath.id)
-        elif ev.state == ofproto_v1_3.OFPPR_DELETE:
-            if datapath.id in self.datapaths:
-                self.logger.info('Unregister datapath: %016x', datapath.id)
-                del self.datapaths[datapath.id]
 
     def extract_features(self, pkt, tcp_pkt, udp_pkt):
         features = [0] * len(self.features)
