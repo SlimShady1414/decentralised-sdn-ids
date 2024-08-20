@@ -1,9 +1,13 @@
 import pandas as pd
 import numpy as np
 from sklearn.model_selection import train_test_split, GridSearchCV
-from sklearn.linear_model import SGDClassifier
+from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier
+from sklearn.tree import DecisionTreeClassifier
+from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import VotingClassifier
 import joblib
 from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
@@ -64,36 +68,46 @@ for file_path in file_paths:
 
 print("Data loading and preprocessing complete.")
 
+# Grouping labels into broader categories
+label_mapping = {
+    'BENIGN': 'Normal',
+    'Bot': 'Botnet',
+    'FTP-Patator': 'Brute Force',
+    'SSH-Patator': 'Brute Force',
+    'DoS Hulk': 'DoS/DDoS',
+    'DoS GoldenEye': 'DoS/DDoS',
+    'DoS slowloris': 'DoS/DDoS',
+    'DoS Slowhttptest': 'DoS/DDoS',
+    'DDoS': 'DoS/DDoS',
+    'Heartbleed': 'DoS/DDoS',
+    'Infiltration': 'Infiltration',
+    'PortScan': 'Port Scan',
+    'Web Attack – Brute Force': 'Web Attack',
+    'Web Attack – XSS': 'Web Attack',
+    'Web Attack – Sql Injection': 'Web Attack'
+}
+
+combined_df['Label'] = combined_df['Label'].map(label_mapping)
+
 # Handle missing values in the target variable
 print("Handling missing values...")
 combined_df.dropna(subset=['Label'], inplace=True)
 print("Missing values handled.")
 print(f"Final label distribution:\n{combined_df['Label'].value_counts()}\n")
 
-# Convert 'Label' to numerical values for multi-class classification
-label_mapping = {label: idx for idx, label in enumerate(combined_df['Label'].unique())}
-combined_df['Label'] = combined_df['Label'].map(label_mapping)
-
 # Split the data into features and target
 X = combined_df[features]
 y = combined_df['Label']
 
-# Check if there are multiple classes in the target variable
-print(f"Unique classes in the target variable: {y.unique()}")
-
-if len(y.unique()) == 1:
-    raise ValueError("The dataset only contains one class. Cannot train a model.")
-
 # Split the data into training and testing sets
 print("Splitting data into training and testing sets...")
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 print(f"Training set label distribution:\n{y_train.value_counts()}")
 print("Data split complete.")
 
 # Controlled undersampling
 print("Applying controlled RandomUnderSampler...")
-# Here, we allow the majority class to be reduced but not as drastically
-undersample_strategy = {k: min(v, 50000) for k, v in y_train.value_counts().items()} # Adjust number based on your hardware capability
+undersample_strategy = {k: min(v, 50000) for k, v in y_train.value_counts().items()}
 rus = RandomUnderSampler(sampling_strategy=undersample_strategy, random_state=42)
 X_train_rus, y_train_rus = rus.fit_resample(X_train, y_train)
 print(f"Training set label distribution after controlled undersampling:\n{pd.Series(y_train_rus).value_counts()}")
@@ -111,15 +125,26 @@ X_train_scaled = scaler.fit_transform(X_train_smote)
 X_test_scaled = scaler.transform(X_test)
 print("Feature scaling complete.")
 
-# Hyperparameter tuning for SGDClassifier
+# Ensemble models setup
+print("Setting up ensemble models...")
+classifiers = [
+    ('rf', RandomForestClassifier(random_state=42)),
+    ('et', ExtraTreesClassifier(random_state=42)),
+    ('dt', DecisionTreeClassifier(random_state=42)),
+    ('xgb', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'))
+]
+
+ensemble = VotingClassifier(estimators=classifiers, voting='soft')
+
+# Hyperparameter tuning using GridSearchCV
 print("Starting hyperparameter tuning...")
 param_grid = {
-    'alpha': [0.0001, 0.001, 0.01],
-    'loss': ['hinge', 'modified_huber'],
-    'penalty': ['l2', 'l1', 'elasticnet']
+    'rf__n_estimators': [50, 100],
+    'et__n_estimators': [50, 100],
+    'xgb__n_estimators': [50, 100],
 }
 
-grid_search = GridSearchCV(SGDClassifier(random_state=42, max_iter=1000, tol=1e-3), param_grid, cv=5, scoring='accuracy', error_score='raise')
+grid_search = GridSearchCV(ensemble, param_grid, cv=5, scoring='accuracy', n_jobs=-1, verbose=2)
 grid_search.fit(X_train_scaled, y_train_smote)
 print("Hyperparameter tuning complete.")
 
@@ -140,6 +165,6 @@ print(f'Classification Report:\n{class_report}')
 
 # Save the model and scaler
 print("Saving the model and scaler...")
-joblib.dump(model, '/mnt/SharedCapstone/multi_attack_model.pkl')
+joblib.dump(model, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
 joblib.dump(scaler, '/mnt/SharedCapstone/feature_scaler_all_features.pkl')
 print("Model and scaler saved.")
