@@ -8,6 +8,7 @@ from ryu.controller.handler import CONFIG_DISPATCHER, MAIN_DISPATCHER, set_ev_cl
 from ryu.ofproto import ofproto_v1_3
 from ryu.lib.packet import packet, ethernet, ipv4, tcp, udp
 import requests
+import time
 
 # Increase the recursion limit to avoid RecursionError
 sys.setrecursionlimit(10000)
@@ -31,14 +32,47 @@ class SimpleSwitch13(app_manager.RyuApp):
             'Fwd Packets/s', 'Bwd Packets/s'
         ]
         self.last_status = None
+        self.local_training_data = []
+        self.training_interval = 300  # Train every 5 minutes
+        self.last_trained = time.time()
 
     def update_model(self):
-        response = requests.get('http://10.0.2.15:5000/get_model', verify=False)
-        if response.status_code == 200:
-            global_model = joblib.loads(response.content)
-            self.model = global_model
-        else:
-            self.logger.error("Failed to fetch the global model")
+        try:
+            response = requests.get('http://10.0.2.15:5000/get_model')
+            if response.status_code == 200:
+                global_model = joblib.loads(response.content)
+                self.model = global_model
+            else:
+                self.logger.error("Failed to fetch the global model")
+        except Exception as e:
+            self.logger.error(f"Failed to update the local model: {e}")
+
+    def train_local_model(self):
+        try:
+            if len(self.local_training_data) > 0:
+                # Create a DataFrame from local training data
+                local_df = pd.DataFrame(self.local_training_data, columns=self.features + ['Label'])
+
+                X_local = local_df[self.features]
+                y_local = local_df['Label']
+
+                # Scaling features
+                X_local_scaled = self.scaler.fit_transform(X_local)
+
+                # Update the model locally
+                self.model.fit(X_local_scaled, y_local)
+
+                # Send updated weights to the global server
+                weights = [estimator.coef_ for estimator in self.model.estimators_ if hasattr(estimator, 'coef_')]
+                requests.post('http://10.0.2.15:5000/update_model', json={'weights': weights})
+                self.logger.info("Local model trained and updated on the global server.")
+
+                # Clear local training data after training
+                self.local_training_data = []
+            else:
+                self.logger.info("No new data to train the local model.")
+        except Exception as e:
+            self.logger.error(f"Error during local model training: {e}")
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -172,6 +206,14 @@ class SimpleSwitch13(app_manager.RyuApp):
 
                 attack_type = attack_labels.get(prediction, 'Unknown')
 
+                # Store data for local training
+                self.local_training_data.append(features + [attack_type])
+
+                # Train the local model periodically
+                if time.time() - self.last_trained > self.training_interval:
+                    self.train_local_model()
+                    self.last_trained = time.time()
+
                 if attack_type != self.last_status:
                     if attack_type != 'Normal':
                         self.logger.info("Attack detected: %s from %s", attack_type, src)
@@ -192,3 +234,4 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+

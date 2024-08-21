@@ -3,24 +3,25 @@ import numpy as np
 
 app = Flask(__name__)
 
-aggregated_predictions = None
+global_model_weights = None
 
-@app.route('/update_predictions', methods=['POST'])
-def update_predictions():
-    global aggregated_predictions
-    received_predictions = np.array(request.json['predictions'])
-    if aggregated_predictions is None:
-        aggregated_predictions = received_predictions
+@app.route('/update_model', methods=['POST'])
+def update_model():
+    global global_model_weights
+    received_weights = np.array(request.json['weights'])
+    if global_model_weights is None:
+        global_model_weights = received_weights
     else:
-        aggregated_predictions = np.mean([aggregated_predictions, received_predictions], axis=0)
-    return jsonify({'message': 'Predictions received successfully'}), 200
+        global_model_weights = np.mean([global_model_weights, received_weights], axis=0)
+    return jsonify({'message': 'Model weights updated successfully'}), 200
 
-@app.route('/get_aggregated_predictions', methods=['GET'])
-def get_aggregated_predictions():
-    global aggregated_predictions
-    if aggregated_predictions is None:
-        return jsonify({'aggregated_predictions': []}), 200
-    return jsonify({'aggregated_predictions': aggregated_predictions.tolist()}), 200
+@app.route('/get_model', methods=['GET'])
+def get_model():
+    global global_model_weights
+    if global_model_weights is None:
+        return jsonify({'weights': []}), 200
+    return jsonify({'weights': global_model_weights.tolist()}), 200
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
+

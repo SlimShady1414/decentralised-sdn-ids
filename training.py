@@ -146,31 +146,24 @@ joblib.dump(model, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
 joblib.dump(scaler, '/mnt/SharedCapstone/feature_scaler_all_features.pkl')
 print("Model and scaler saved.")
 
-# Federated learning part: Generate predictions and send to server
-local_predictions = model.predict(X_test_scaled)
+# Federated learning part: Update local model with global weights
+try:
+    response = requests.get('http://10.0.2.15:5000/get_model')
+    global_weights = np.array(response.json()['weights'])
 
-response = requests.post('http://10.0.2.15:5000/update_predictions', json={'predictions': local_predictions.tolist()})
-
-print(response.json())
-
-response = requests.get('http://10.0.2.15:5000/get_aggregated_predictions')
-
-# Check if the response was successful and contains valid JSON
-if response.status_code == 200:
-    try:
-        global_predictions = np.array(response.json().get('aggregated_predictions', []))
-        if global_predictions.size > 0:
-            accuracy = accuracy_score(y_test, global_predictions)
-            print(f'Global Model Accuracy: {accuracy}')
+    for i, estimator in enumerate(model.estimators_):
+        if hasattr(estimator, 'coef_'):
+            estimator.coef_ = global_weights[i]
+        elif hasattr(estimator, 'feature_importances_'):
+            # Custom setting of the attribute if it's allowed by the model
+            estimator._final_estimator.set_params(feature_importances_=global_weights[i])
         else:
-            print("No aggregated predictions received from the server.")
-    except ValueError as e:
-        print(f"Error parsing JSON response: {e}")
-else:
-    print(f"Server error: {response.status_code}")
+            raise AttributeError(f"Estimator {i} does not have 'coef_' or 'feature_importances_' attributes")
+except Exception as e:
+    print(f"Failed to update the local model with global weights: {e}")
 
+# Save the updated global model
 joblib.dump(model, '/mnt/SharedCapstone/global_model.pkl')
 
 # Log the successful completion
-print("Training completed and global model saved successfully.")
-
+print("Model updated with global weights and saved successfully.")
