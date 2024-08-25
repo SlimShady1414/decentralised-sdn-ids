@@ -22,16 +22,14 @@ file_paths = [
     '/mnt/SharedCapstone/Wednesday-workingHours.pcap_ISCX.csv'
 ]
 
-# Define a comprehensive set of features
+# Define the 22 selected features from the paper
 features = [
-    'Init_Win_bytes_forward', 'Fwd Packet Length Max', 'Fwd Packet Length Mean',
-    'Subflow Fwd Bytes', 'Avg Fwd Segment Size', 'Subflow Fwd Packets',
-    'Total Length of Fwd Packets', 'Bwd Packet Length Min', 'act_data_pkt_fwd',
-    'Fwd IAT Std', 'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
-    'Flow IAT Mean', 'Flow IAT Max', 'Flow IAT Min', 'Fwd IAT Mean', 'Bwd IAT Mean',
-    'Packet Length Mean', 'Packet Length Std', 'Packet Length Variance',
-    'Average Packet Size', 'Fwd Header Length', 'Bwd Header Length',
-    'Fwd Packets/s', 'Bwd Packets/s'
+    'Fwd Header Length', 'Fwd Packet Length Std', 'Bwd Packets/s', 'Fwd Packet Length Mean',
+    'Bwd Header Length', 'Fwd IAT Mean', 'Packet Length Std', 'Flow IAT Std',
+    'Min Packet Length', 'Fwd Packet Length Min', 'Avg Fwd Segment Size', 'Max Packet Length',
+    'ACK Flag Count', 'Packet Length Variance', 'Packet Length Mean', 'Bwd Packet Length Max',
+    'Bwd IAT Std', 'Flow IAT Mean', 'Fwd Packet Length Std', 'Bwd IAT Mean',
+    'Average Packet Size', 'Bwd IAT Total'
 ]
 
 # Initialize an empty DataFrame to hold combined data
@@ -91,6 +89,7 @@ X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_
 print(f"Training set label distribution:\n{y_train.value_counts()}")
 print("Data split complete.")
 
+# Handle class imbalance
 print("Applying controlled RandomUnderSampler...")
 undersample_strategy = {k: min(v, 50000) for k, v in y_train.value_counts().items()}
 rus = RandomUnderSampler(sampling_strategy=undersample_strategy, random_state=42)
@@ -136,24 +135,20 @@ joblib.dump(ensemble, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
 joblib.dump(scaler, '/mnt/SharedCapstone/feature_scaler_all_features.pkl')
 print("Model and scaler saved.")
 
-# Federated learning part: Update local model with global weights
 try:
     response = requests.get('http://10.0.2.15:5000/get_model')
     global_weights = np.array(response.json()['weights'])
 
-    for i, estimator in enumerate(ensemble.estimators_):
-        if hasattr(estimator, 'coef_'):
-            estimator.coef_ = global_weights[i]
-        elif hasattr(estimator, 'feature_importances_'):
-            # Custom setting of the attribute if it's allowed by the model
-            estimator._final_estimator.set_params(feature_importances_=global_weights[i])
-        else:
-            raise AttributeError(f"Estimator {i} does not have 'coef_' or 'feature_importances_' attributes")
+    if global_weights.size > 0:
+        for i, estimator in enumerate(ensemble.estimators_):
+            if hasattr(estimator, 'coef_') and global_weights[i].size > 0:
+                estimator.coef_ = global_weights[i]
+            elif hasattr(estimator, 'feature_importances_') and global_weights[i].size > 0:
+                estimator.feature_importances_ = global_weights[i]
+            else:
+                print(f"Estimator {i} does not have 'coef_' or 'feature_importances_' attributes")
+    else:
+        print("Global weights are empty or not initialized.")
 except Exception as e:
     print(f"Failed to update the local model with global weights: {e}")
 
-# Save the updated global model
-joblib.dump(ensemble, '/mnt/SharedCapstone/global_model.pkl')
-
-# Log the successful completion
-print("Model updated with global weights and saved successfully.")

@@ -22,16 +22,13 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.model = joblib.load('/mnt/SharedCapstone/global_model.pkl')
         self.scaler = joblib.load('/mnt/SharedCapstone/feature_scaler_all_features.pkl')
         self.features = [
-            'Init_Win_bytes_forward', 'Fwd Packet Length Max', 'Fwd Packet Length Mean',
-            'Subflow Fwd Bytes', 'Avg Fwd Segment Size', 'Subflow Fwd Packets',
-            'Total Length of Fwd Packets', 'Bwd Packet Length Min', 'act_data_pkt_fwd',
-            'Fwd IAT Std', 'Flow Duration', 'Total Fwd Packets', 'Total Backward Packets',
-            'Flow IAT Mean', 'Flow IAT Max', 'Flow IAT Min', 'Fwd IAT Mean', 'Bwd IAT Mean',
-            'Packet Length Mean', 'Packet Length Std', 'Packet Length Variance',
-            'Average Packet Size', 'Fwd Header Length', 'Bwd Header Length',
-            'Fwd Packets/s', 'Bwd Packets/s'
+            'Fwd Header Length', 'Fwd Packet Length Std', 'Bwd Packets/s', 'Fwd Packet Length Mean',
+            'Bwd Header Length', 'Fwd IAT Mean', 'Packet Length Std', 'Flow IAT Std',
+            'Min Packet Length', 'Fwd Packet Length Min', 'Avg Fwd Segment Size', 'Max Packet Length',
+            'ACK Flag Count', 'Packet Length Variance', 'Packet Length Mean', 'Bwd Packet Length Max',
+            'Bwd IAT Std', 'Flow IAT Mean', 'Fwd Packet Length Std', 'Bwd IAT Mean',
+            'Average Packet Size', 'Bwd IAT Total'
         ]
-        self.last_status = None
         self.local_training_data = []
         self.training_interval = 300  # Train every 5 minutes
         self.last_trained = time.time()
@@ -40,8 +37,13 @@ class SimpleSwitch13(app_manager.RyuApp):
         try:
             response = requests.get('http://10.0.2.15:5000/get_model')
             if response.status_code == 200:
-                global_model = joblib.loads(response.content)
-                self.model = global_model
+                global_model_weights = np.array(response.json()['weights'])
+                for i, estimator in enumerate(self.model.estimators_):
+                    if hasattr(estimator, 'coef_'):
+                        estimator.coef_ = global_model_weights[i]
+                    elif hasattr(estimator, 'feature_importances_'):
+                        estimator.feature_importances_ = global_model_weights[i]
+                self.logger.info("Local model updated with global weights.")
             else:
                 self.logger.error("Failed to fetch the global model")
         except Exception as e:
@@ -57,7 +59,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                 y_local = local_df['Label']
 
                 # Scaling features
-                X_local_scaled = self.scaler.fit_transform(X_local)
+                X_local_scaled = self.scaler.transform(X_local)
 
                 # Update the model locally
                 self.model.fit(X_local_scaled, y_local)
@@ -98,62 +100,55 @@ class SimpleSwitch13(app_manager.RyuApp):
         datapath.send_msg(mod)
 
     def extract_features(self, pkt, tcp_pkt, udp_pkt):
-        features = [0] * len(self.features)
+        features = [0] * len(self.features)  # Ensure the list matches the feature length
 
         if tcp_pkt:
-            features[0] = tcp_pkt.window_size
-            features[1] = len(pkt)
-            features[2] = len(pkt)
-            features[3] = len(pkt)
-            features[4] = len(pkt)
-            features[5] = 1
-            features[6] = len(pkt)
-            features[7] = min(tcp_pkt.dst_port, tcp_pkt.src_port)
-            features[8] = len(pkt)
-            features[9] = len(pkt)
-            features[10] = len(pkt)
-            features[11] = 1
-            features[12] = 1
-            features[13] = len(pkt)
-            features[14] = max(tcp_pkt.dst_port, tcp_pkt.src_port)
-            features[15] = min(tcp_pkt.dst_port, tcp_pkt.src_port)
-            features[16] = len(pkt)
-            features[17] = len(pkt)
-            features[18] = len(pkt)
-            features[19] = np.std([len(pkt)])
-            features[20] = np.var([len(pkt)])
-            features[21] = np.mean([len(pkt)])
-            features[22] = 1
-            features[23] = 1
-            features[24] = len(pkt)
-            features[25] = len(pkt)
+            features[0] = tcp_pkt.window_size  # Fwd Header Length
+            features[1] = np.std([len(pkt)])   # Fwd Packet Length Std
+            features[2] = 1  # Bwd Packets/s (placeholder)
+            features[3] = len(pkt)  # Fwd Packet Length Mean
+            features[4] = 1  # Bwd Header Length (placeholder)
+            features[5] = np.mean([len(pkt)])  # Fwd IAT Mean (placeholder)
+            features[6] = np.std([len(pkt)])   # Packet Length Std
+            features[7] = np.std([len(pkt)])   # Flow IAT Std (placeholder)
+            features[8] = min(len(pkt), tcp_pkt.dst_port)  # Min Packet Length
+            features[9] = len(pkt)  # Fwd Packet Length Min
+            features[10] = len(pkt)  # Avg Fwd Segment Size (placeholder)
+            features[11] = max(len(pkt), tcp_pkt.dst_port)  # Max Packet Length
+            features[12] = 1  # ACK Flag Count (placeholder)
+            features[13] = np.var([len(pkt)])  # Packet Length Variance
+            features[14] = np.mean([len(pkt)])  # Packet Length Mean
+            features[15] = max(len(pkt), tcp_pkt.dst_port)  # Bwd Packet Length Max (placeholder)
+            features[16] = np.std([len(pkt)])   # Bwd IAT Std (placeholder)
+            features[17] = np.mean([len(pkt)])  # Flow IAT Mean (placeholder)
+            features[18] = np.std([len(pkt)])   # Fwd Packet Length Std (duplicate, could change)
+            features[19] = np.mean([len(pkt)])  # Bwd IAT Mean (placeholder)
+            features[20] = np.mean([len(pkt)])  # Average Packet Size (placeholder)
+            features[21] = len(pkt)  # Bwd IAT Total (placeholder)
+
         elif udp_pkt:
-            features[0] = udp_pkt.sport
-            features[1] = udp_pkt.length
-            features[2] = udp_pkt.length
-            features[3] = udp_pkt.length
-            features[4] = udp_pkt.length
-            features[5] = 1
-            features[6] = len(pkt)
-            features[7] = udp_pkt.sport
-            features[8] = 1
-            features[9] = len(pkt)
-            features[10] = len(pkt)
-            features[11] = 1
-            features[12] = 1
-            features[13] = len(pkt)
-            features[14] = udp_pkt.sport
-            features[15] = udp_pkt.dport
-            features[16] = len(pkt)
-            features[17] = len(pkt)
-            features[18] = len(pkt)
-            features[19] = np.std([len(pkt)])
-            features[20] = np.var([len(pkt)])
-            features[21] = np.mean([len(pkt)])
-            features[22] = 1
-            features[23] = 1
-            features[24] = len(pkt)
-            features[25] = len(pkt)
+            features[0] = udp_pkt.sport  # Fwd Header Length
+            features[1] = np.std([len(pkt)])  # Fwd Packet Length Std
+            features[2] = 1  # Bwd Packets/s (placeholder)
+            features[3] = udp_pkt.length  # Fwd Packet Length Mean
+            features[4] = 1  # Bwd Header Length (placeholder)
+            features[5] = np.mean([len(pkt)])  # Fwd IAT Mean (placeholder)
+            features[6] = np.std([len(pkt)])  # Packet Length Std
+            features[7] = np.std([len(pkt)])  # Flow IAT Std (placeholder)
+            features[8] = min(len(pkt), udp_pkt.dport)  # Min Packet Length
+            features[9] = udp_pkt.length  # Fwd Packet Length Min
+            features[10] = udp_pkt.length  # Avg Fwd Segment Size (placeholder)
+            features[11] = max(len(pkt), udp_pkt.dport)  # Max Packet Length
+            features[12] = 1  # ACK Flag Count (placeholder)
+            features[13] = np.var([len(pkt)])  # Packet Length Variance
+            features[14] = np.mean([len(pkt)])  # Packet Length Mean
+            features[15] = max(len(pkt), udp_pkt.dport)  # Bwd Packet Length Max (placeholder)
+            features[16] = np.std([len(pkt)])  # Bwd IAT Std (placeholder)
+            features[17] = np.mean([len(pkt)])  # Flow IAT Mean (placeholder)
+            features[18] = np.std([len(pkt)])  # Fwd Packet Length Std (duplicate, could change)
+            features[19] = np.mean([len(pkt)])  # Bwd IAT Mean (placeholder)
+            features[20] = np.mean([len(pkt)])  # Average Packet Size (placeholder)
+            features[21] = udp_pkt.length  # Bwd IAT Total (placeholder)
 
         return features
 
@@ -207,7 +202,6 @@ class SimpleSwitch13(app_manager.RyuApp):
                     self.train_local_model()
                     self.last_trained = time.time()
 
-                self.last_status = prediction
             except Exception as e:
                 self.logger.error("Error in feature scaling or prediction: %s", e)
         else:
