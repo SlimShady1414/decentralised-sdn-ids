@@ -194,38 +194,24 @@ class SimpleSwitch13(app_manager.RyuApp):
                 features_scaled = self.scaler.transform(features_df)
                 prediction = self.model.predict(features_scaled)[0]
 
-                attack_labels = {
-                    0: 'Normal',
-                    1: 'Botnet',
-                    2: 'Brute Force',
-                    3: 'DoS/DDoS',
-                    4: 'Infiltration',
-                    5: 'Port Scan',
-                    6: 'Web Attack'
-                }
-
-                attack_type = attack_labels.get(prediction, 'Unknown')
+                if prediction != 0:  # Non-Normal Traffic
+                    self.logger.info("Attack detected from %s", src)
+                else:
+                    self.logger.info("Normal traffic detected from %s", src)
 
                 # Store data for local training
-                self.local_training_data.append(features + [attack_type])
+                self.local_training_data.append(features + ['Attack' if prediction != 0 else 'Normal'])
 
                 # Train the local model periodically
                 if time.time() - self.last_trained > self.training_interval:
                     self.train_local_model()
                     self.last_trained = time.time()
 
-                if attack_type != self.last_status:
-                    if attack_type != 'Normal':
-                        self.logger.info("Attack detected: %s from %s", attack_type, src)
-                    else:
-                        self.logger.info("Normal traffic detected from %s", src)
-                    self.last_status = attack_type
+                self.last_status = prediction
             except Exception as e:
                 self.logger.error("Error in feature scaling or prediction: %s", e)
         else:
-            if self.last_status != 'Non-IP or unsupported':
-                self.logger.info("Non-IP or unsupported packet type received.")
-                self.last_status = 'Non-IP or unsupported'
+            self.logger.info("Normal traffic detected from %s", src)
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -234,4 +220,3 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
-

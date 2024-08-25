@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import train_test_split
 from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, VotingClassifier
 from xgboost import XGBClassifier
 from sklearn.preprocessing import StandardScaler
@@ -110,39 +110,29 @@ print("Feature scaling complete.")
 
 print("Setting up ensemble models...")
 classifiers = [
-    ('rf', RandomForestClassifier(random_state=42)),
-    ('et', ExtraTreesClassifier(random_state=42)),
-    ('xgb', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss'))
+    ('rf', RandomForestClassifier(random_state=42, n_estimators=100)),
+    ('et', ExtraTreesClassifier(random_state=42, n_estimators=100)),
+    ('xgb', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss', n_estimators=100))
 ]
 
 ensemble = VotingClassifier(estimators=classifiers, voting='soft')
 
-print("Starting hyperparameter tuning...")
-param_grid = {
-    'rf__n_estimators': [50, 100],
-    'et__n_estimators': [50, 100],
-    'xgb__n_estimators': [50, 100],
-}
-
-grid_search = GridSearchCV(ensemble, param_grid, cv=5, scoring='accuracy', n_jobs=-1, verbose=2)
-grid_search.fit(X_train_scaled, y_train_smote)
-print("Hyperparameter tuning complete.")
-
-model = grid_search.best_estimator_
+print("Training the ensemble model...")
+ensemble.fit(X_train_scaled, y_train_smote)
+print("Model training complete.")
 
 print("Evaluating the model...")
-y_pred = model.predict(X_test_scaled)
+y_pred = ensemble.predict(X_test_scaled)
 accuracy = accuracy_score(y_test, y_pred)
 conf_matrix = confusion_matrix(y_test, y_pred)
 class_report = classification_report(y_test, y_pred)
 
-print(f'Best Parameters: {grid_search.best_params_}')
 print(f'Accuracy: {accuracy}')
 print(f'Confusion Matrix:\n{conf_matrix}')
 print(f'Classification Report:\n{class_report}')
 
 print("Saving the model and scaler...")
-joblib.dump(model, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
+joblib.dump(ensemble, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
 joblib.dump(scaler, '/mnt/SharedCapstone/feature_scaler_all_features.pkl')
 print("Model and scaler saved.")
 
@@ -151,7 +141,7 @@ try:
     response = requests.get('http://10.0.2.15:5000/get_model')
     global_weights = np.array(response.json()['weights'])
 
-    for i, estimator in enumerate(model.estimators_):
+    for i, estimator in enumerate(ensemble.estimators_):
         if hasattr(estimator, 'coef_'):
             estimator.coef_ = global_weights[i]
         elif hasattr(estimator, 'feature_importances_'):
@@ -163,7 +153,7 @@ except Exception as e:
     print(f"Failed to update the local model with global weights: {e}")
 
 # Save the updated global model
-joblib.dump(model, '/mnt/SharedCapstone/global_model.pkl')
+joblib.dump(ensemble, '/mnt/SharedCapstone/global_model.pkl')
 
 # Log the successful completion
 print("Model updated with global weights and saved successfully.")
