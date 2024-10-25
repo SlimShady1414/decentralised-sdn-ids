@@ -1,154 +1,205 @@
 import pandas as pd
-import numpy as np
 from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier, ExtraTreesClassifier, VotingClassifier
+from sklearn.ensemble import RandomForestClassifier
 from xgboost import XGBClassifier
-from sklearn.preprocessing import StandardScaler
 from sklearn.metrics import classification_report, confusion_matrix, accuracy_score
-import joblib
-import requests
-from imblearn.under_sampling import RandomUnderSampler
 from imblearn.over_sampling import SMOTE
+from imblearn.under_sampling import RandomUnderSampler
+from collections import Counter
+import joblib  # To save the models
+from river import ensemble
+from river.tree import HoeffdingTreeClassifier, HoeffdingAdaptiveTreeClassifier
 
-# List of file paths
-file_paths = [
-    '/mnt/SharedCapstone/Friday-WorkingHours-Afternoon-DDos.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Friday-WorkingHours-Afternoon-PortScan.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Friday-WorkingHours-Morning.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Monday-WorkingHours.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Thursday-WorkingHours-Afternoon-Infilteration.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Thursday-WorkingHours-Morning-WebAttacks.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Tuesday-WorkingHours.pcap_ISCX.csv',
-    '/mnt/SharedCapstone/Wednesday-workingHours.pcap_ISCX.csv'
+# Load data
+print("Loading data...")
+df_ids2018 = pd.read_csv('cleaned_ids2018_sampled.csv')
+
+# Check if labels are numeric or strings and map if necessary
+if df_ids2018['Label'].dtype == 'object':
+    label_dict = {
+        'Benign': 1,
+        'FTP-BruteForce': 2,
+        'SSH-Bruteforce': 3,
+        'DDOS attack-HOIC': 4,
+        'Bot': 5,
+        'DoS attacks-GoldenEye': 6,
+        'DoS attacks-Slowloris': 7,
+        'DDOS attack-LOIC-UDP': 8,
+        'Brute Force -Web': 9,
+        'Brute Force -XSS': 10,
+        'SQL Injection': 11
+    }
+    print("Mapping string labels to numeric labels...")
+    df_ids2018['Label'] = df_ids2018['Label'].map(label_dict)
+
+# Log original label distribution
+print("Original Label distribution:\n", df_ids2018['Label'].value_counts())
+
+# Use the 12 selected features
+selected_features = [
+    'Tot Fwd Pkts', 'TotLen Fwd Pkts', 'Bwd Pkt Len Max', 'Flow Pkts/s',
+    'Fwd IAT Mean', 'Bwd IAT Tot', 'Bwd IAT Mean', 'RST Flag Cnt',
+    'URG Flag Cnt', 'Init Fwd Win Byts', 'Fwd Seg Size Min', 'Idle Max'
 ]
 
-# Define the 22 selected features from the paper
-features = [
-    'Fwd Header Length', 'Fwd Packet Length Std', 'Bwd Packets/s', 'Fwd Packet Length Mean',
-    'Bwd Header Length', 'Fwd IAT Mean', 'Packet Length Std', 'Flow IAT Std',
-    'Min Packet Length', 'Fwd Packet Length Min', 'Avg Fwd Segment Size', 'Max Packet Length',
-    'ACK Flag Count', 'Packet Length Variance', 'Packet Length Mean', 'Bwd Packet Length Max',
-    'Bwd IAT Std', 'Flow IAT Mean', 'Fwd Packet Length Std', 'Bwd IAT Mean',
-    'Average Packet Size', 'Bwd IAT Total'
-]
+X = df_ids2018[selected_features]
+y = df_ids2018['Label']
 
-# Initialize an empty DataFrame to hold combined data
-combined_df = pd.DataFrame()
+# Split data into train and test sets
+print("Splitting data into train and test sets...")
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.3, stratify=y, random_state=42)
 
-# Load and preprocess each file, then concatenate
-print("Loading and preprocessing data...")
-for file_path in file_paths:
-    try:
-        df = pd.read_csv(file_path, engine='python')
-        print(f"Processing {file_path}...")
+# Log label distribution in training set
+print("Label distribution in training set before resampling:\n", Counter(y_train))
 
-        df.columns = df.columns.str.strip()
-        df['Flow Bytes/s'].fillna(df['Flow Bytes/s'].median(), inplace=True)
-        df.replace([np.inf, -np.inf], np.finfo(np.float32).max, inplace=True)
-        max_value = np.finfo(np.float32).max
-        df['Flow Bytes/s'] = df['Flow Bytes/s'].clip(lower=-max_value, upper=max_value)
-        df['Flow Packets/s'] = df['Flow Packets/s'].clip(lower=-max_value, upper=max_value)
-        combined_df = pd.concat([combined_df, df])
+# Apply undersampling to reduce major attack classes
+benign_count = int(len(y_train) * 0.5)
+attack_count = len(y_train) - benign_count
 
-    except Exception as e:
-        print(f"Error processing {file_path}: {e}")
-
-print("Data loading and preprocessing complete.")
-
-# Grouping labels into broader categories
-label_mapping = {
-    'BENIGN': 'Normal',
-    'Bot': 'Botnet',
-    'FTP-Patator': 'Brute Force',
-    'SSH-Patator': 'Brute Force',
-    'DoS Hulk': 'DoS/DDoS',
-    'DoS GoldenEye': 'DoS/DDoS',
-    'DoS slowloris': 'DoS/DDoS',
-    'DoS Slowhttptest': 'DoS/DDoS',
-    'DDoS': 'DoS/DDoS',
-    'Heartbleed': 'DoS/DDoS',
-    'Infiltration': 'Infiltration',
-    'PortScan': 'Port Scan',
-    'Web Attack – Brute Force': 'Web Attack',
-    'Web Attack – XSS': 'Web Attack',
-    'Web Attack – Sql Injection': 'Web Attack'
+under_strategy = {
+    1: benign_count,
+    2: min(int(attack_count / 10), Counter(y_train)[2]),
+    3: min(int(attack_count / 10), Counter(y_train)[3]),
+    4: min(int(attack_count / 10), Counter(y_train)[4]),
+    5: min(int(attack_count / 10), Counter(y_train)[5]),
+    6: min(int(attack_count / 10), Counter(y_train)[6]),
+    7: min(int(attack_count / 10), Counter(y_train)[7]),
+    8: min(int(attack_count / 10), Counter(y_train)[8]),
+    9: min(int(attack_count / 10), Counter(y_train)[9]),
+    10: min(int(attack_count / 10), Counter(y_train)[10]),
+    11: min(int(attack_count / 10), Counter(y_train)[11])
 }
 
-combined_df['Label'] = combined_df['Label'].map(label_mapping)
+under_sampler = RandomUnderSampler(sampling_strategy=under_strategy, random_state=42)
+X_train_under, y_train_under = under_sampler.fit_resample(X_train, y_train)
 
-print("Handling missing values...")
-combined_df.dropna(subset=['Label'], inplace=True)
-print("Missing values handled.")
-print(f"Final label distribution:\n{combined_df['Label'].value_counts()}\n")
+# Log label distribution after undersampling
+print("Label distribution after undersampling:\n", Counter(y_train_under))
 
-X = combined_df[features]
-y = combined_df['Label']
+# Apply SMOTE for oversampling minority attack classes
+smote_strategy = {
+    1: benign_count,
+    2: min(int(attack_count / 10), Counter(y_train_under)[2]),
+    3: min(int(attack_count / 10), Counter(y_train_under)[3]),
+    4: min(int(attack_count / 10), Counter(y_train_under)[4]),
+    5: min(int(attack_count / 10), Counter(y_train_under)[5]),
+    6: min(int(attack_count / 10), Counter(y_train_under)[6]),
+    7: min(int(attack_count / 10), Counter(y_train_under)[7]),
+    8: min(int(attack_count / 10), Counter(y_train_under)[8]),
+    9: min(int(attack_count / 10), Counter(y_train_under)[9]),
+    10: min(int(attack_count / 10), Counter(y_train_under)[10]),
+    11: min(int(attack_count / 10), Counter(y_train_under)[11])
+}
 
-print("Splitting data into training and testing sets...")
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
-print(f"Training set label distribution:\n{y_train.value_counts()}")
-print("Data split complete.")
+smote = SMOTE(sampling_strategy=smote_strategy, random_state=42)
+X_train_res, y_train_res = smote.fit_resample(X_train_under, y_train_under)
 
-# Handle class imbalance
-print("Applying controlled RandomUnderSampler...")
-undersample_strategy = {k: min(v, 50000) for k, v in y_train.value_counts().items()}
-rus = RandomUnderSampler(sampling_strategy=undersample_strategy, random_state=42)
-X_train_rus, y_train_rus = rus.fit_resample(X_train, y_train)
-print(f"Training set label distribution after controlled undersampling:\n{pd.Series(y_train_rus).value_counts()}")
+# Subtract 1 from the labels for XGBoost
+y_train_res_xgb = y_train_res - 1
+y_test_xgb = y_test - 1
 
-print("Applying SMOTE to balance classes in the training set...")
-smote = SMOTE(sampling_strategy='auto', random_state=42)
-X_train_smote, y_train_smote = smote.fit_resample(X_train_rus, y_train_rus)
-print(f"Training set label distribution after SMOTE:\n{pd.Series(y_train_smote).value_counts()}")
+# Train Random Forest model
+print("Training Random Forest model...")
+rf_model = RandomForestClassifier(n_estimators=200, max_depth=20, random_state=42, n_jobs=-1)
+rf_model.fit(X_train_res, y_train_res)
 
-print("Scaling features...")
-scaler = StandardScaler()
-X_train_scaled = scaler.fit_transform(X_train_smote)
-X_test_scaled = scaler.transform(X_test)
-print("Feature scaling complete.")
+# Save the Random Forest model
+joblib.dump(rf_model, 'rf_model.joblib')
+print("Random Forest model saved as 'rf_model.joblib'")
 
-print("Setting up ensemble models...")
-classifiers = [
-    ('rf', RandomForestClassifier(random_state=42, n_estimators=100)),
-    ('et', ExtraTreesClassifier(random_state=42, n_estimators=100)),
-    ('xgb', XGBClassifier(random_state=42, use_label_encoder=False, eval_metric='mlogloss', n_estimators=100))
-]
+# Predict and evaluate Random Forest
+#y_pred_rf = rf_model.predict(X_test)
+#print("RF Accuracy:", accuracy_score(y_test, y_pred_rf))
+#print("Random Forest classification report:\n", classification_report(y_test, y_pred_rf))
+#print("Random Forest confusion matrix:\n", confusion_matrix(y_test, y_pred_rf))
 
-ensemble = VotingClassifier(estimators=classifiers, voting='soft')
+# Train XGBoost model
+print("Training XGBoost model...")
+xgb_model = XGBClassifier(n_estimators=100, n_jobs=-1, random_state=42, use_label_encoder=False)
+xgb_model.fit(X_train_res, y_train_res_xgb)
 
-print("Training the ensemble model...")
-ensemble.fit(X_train_scaled, y_train_smote)
-print("Model training complete.")
+# Save the XGBoost model
+joblib.dump(xgb_model, 'xgb_model.joblib')
+print("XGBoost model saved as 'xgb_model.joblib'")
 
-print("Evaluating the model...")
-y_pred = ensemble.predict(X_test_scaled)
-accuracy = accuracy_score(y_test, y_pred)
-conf_matrix = confusion_matrix(y_test, y_pred)
-class_report = classification_report(y_test, y_pred)
+# Predict and evaluate XGBoost
+#y_pred_xgb = xgb_model.predict(X_test)
+#print("XGB Accuracy:", accuracy_score(y_test_xgb, y_pred_xgb))
+#print("XGBoost classification report:\n", classification_report(y_test_xgb, y_pred_xgb))
+#print("XGBoost confusion matrix:\n", confusion_matrix(y_test_xgb, y_pred_xgb))
 
-print(f'Accuracy: {accuracy}')
-print(f'Confusion Matrix:\n{conf_matrix}')
-print(f'Classification Report:\n{class_report}')
+# Convert to dictionary format for River (online learning library)
+X_train_dict = X_train_res.to_dict(orient='records')
+X_test_dict = X_test.to_dict(orient='records')
 
-print("Saving the model and scaler...")
-joblib.dump(ensemble, '/mnt/SharedCapstone/ensemble_multi_attack_model.pkl')
-joblib.dump(scaler, '/mnt/SharedCapstone/feature_scaler_all_features.pkl')
-print("Model and scaler saved.")
+# Train and evaluate Online Random Forest (ORF) with streaming data
+print("Training Online Random Forest (ORF) model incrementally...")
+orf_model = HoeffdingAdaptiveTreeClassifier()
 
-try:
-    response = requests.get('http://10.0.2.15:5000/get_model')
-    global_weights = np.array(response.json()['weights'])
+for xi, yi in zip(X_train_dict, y_train_res):
+    orf_model.learn_one(xi, yi)
 
-    if global_weights.size > 0:
-        for i, estimator in enumerate(ensemble.estimators_):
-            if hasattr(estimator, 'coef_') and global_weights[i].size > 0:
-                estimator.coef_ = global_weights[i]
-            elif hasattr(estimator, 'feature_importances_') and global_weights[i].size > 0:
-                estimator.feature_importances_ = global_weights[i]
-            else:
-                print(f"Estimator {i} does not have 'coef_' or 'feature_importances_' attributes")
-    else:
-        print("Global weights are empty or not initialized.")
-except Exception as e:
-    print(f"Failed to update the local model with global weights: {e}")
+# Stream data to ORF and predict
+print("Evaluating ORF model with streaming data...")
+orf_preds = []
+for xi, yi in zip(X_test_dict, y_test):  # Stream test data one by one
+    orf_pred = orf_model.predict_one(xi)
+    orf_preds.append(orf_pred)
+    orf_model.learn_one(xi, yi)  # Update the model incrementally after each prediction
+
+#print("ORF Accuracy:", accuracy_score(y_test, orf_preds))
+#print("ORF Confusion Matrix:\n", confusion_matrix(y_test, orf_preds))
+
+# Save the ORF model
+joblib.dump(orf_model, 'orf_model.joblib')
+print("ORF model saved as 'orf_model.joblib'")
+
+# Train and evaluate Hoeffding Tree (HT) with streaming data
+print("Training Hoeffding Tree (HT) model incrementally...")
+ht_model = HoeffdingTreeClassifier()
+
+for xi, yi in zip(X_train_dict, y_train_res):
+    ht_model.learn_one(xi, yi)
+
+# Stream data to HT and predict
+print("Evaluating HT model with streaming data...")
+ht_preds = []
+for xi, yi in zip(X_test_dict, y_test):  # Stream test data one by one
+    ht_pred = ht_model.predict_one(xi)
+    ht_preds.append(ht_pred)
+    ht_model.learn_one(xi, yi)  # Update the model incrementally after each prediction
+
+#rint("HT Accuracy:", accuracy_score(y_test, ht_preds))
+#print("HT Confusion Matrix:\n", confusion_matrix(y_test, ht_preds))
+
+# Save the HT model
+joblib.dump(ht_model, 'ht_model.joblib')
+print("HT model saved as 'ht_model.joblib'")
+
+# Custom evaluation: Pass one record per label to all four models and print predictions
+#print("Performing custom evaluation for all models...")
+#unique_labels = y_test.unique()
+#for label in unique_labels:
+#    sample_record = X_test[y_test == label].iloc[0].to_dict()
+#    print(f"Record for label {label}:\n", sample_record)#
+
+    # Prediction using Random Forest
+#    rf_pred = rf_model.predict([list(sample_record.values())])
+#    print(f"Random Forest prediction for label {label}: {rf_pred}")
+
+    # Prediction using XGBoost
+#    xgb_pred = xgb_model.predict([list(sample_record.values())])
+#    print(f"XGBoost prediction for label {label}: {xgb_pred}")
+
+    # Prediction using ORF
+#    orf_pred = orf_model.predict_one(sample_record)
+#    print(f"ORF prediction for label {label}: {orf_pred}")
+
+    # Prediction using HT
+#    ht_pred = ht_model.predict_one(sample_record)
+#    print(f"HT prediction for label {label}: {ht_pred}")
+
+# End of process
+#print("Process complete.")
+
 
