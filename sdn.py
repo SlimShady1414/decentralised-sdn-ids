@@ -60,6 +60,9 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.enable_prediction = True  # Enable prediction during control traffic
 
+        # Known attack IDs (1-11), with 1 being benign
+        self.known_attack_ids = list(range(1, 12))
+
         # Features used in the model
         self.features = [
             'Tot Fwd Pkts', 'TotLen Fwd Pkts', 'Bwd Pkt Len Max', 'Flow Pkts/s',
@@ -92,14 +95,20 @@ class SimpleSwitch13(app_manager.RyuApp):
     def extract_features(self, payload):
         try:
             features = json.loads(payload.decode('utf-8'))
+            packet_id = features.get('id')  # Extract 'id' for checking
+            if packet_id is None:
+                self.logger.error("Packet ID is missing.")
+                return None, None
+
+            # Ensure all expected features are present
             if all(feature in features for feature in self.features):
-                return features
+                return features, packet_id
             else:
                 self.logger.error("Some features are missing from the payload.")
-                return None
+                return None, packet_id
         except Exception as e:
             self.logger.error(f"Error extracting features from packet: {e}")
-            return None
+            return None, None
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -160,7 +169,34 @@ class SimpleSwitch13(app_manager.RyuApp):
             raw_payload = pkt[-1] if isinstance(pkt[-1], bytes) else None
 
         if raw_payload:
-            features = self.extract_features(raw_payload)
+            features, packet_id = self.extract_features(raw_payload)
+            if packet_id is not None:
+                # Check if the packet ID is not in the known list (1-11)
+                if packet_id not in self.known_attack_ids:
+                    self.logger.info(f"Unknown attack detected: Packet ID {packet_id}")
+                    if features:
+                        features_df = pd.DataFrame([features], columns=self.features)
+                        # Add unknown attack features to the buffer
+                        self.local_data_buffer_rf.append((features_df, -1))  # -1 label for unknown attacks
+                        self.local_data_buffer_xgb.append((features_df, -1))
+                        # Update models if buffer size threshold is reached
+                        if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
+                            self.update_models()
+                    return  # Skip further processing for unknown attacks
+
+                # If the ID is 1, treat it as benign
+                if packet_id == 1:
+                    self.logger.info(f"Normal traffic from {src}.")
+                    self.ht_model.learn_one(features, label_dict['Benign'])  # Learn benign class as 0
+                    self.orf_model.learn_one(features, label_dict['Benign'])
+                    features_df = pd.DataFrame([features], columns=self.features)
+                    self.local_data_buffer_rf.append((features_df, label_dict['Benign']))
+                    self.local_data_buffer_xgb.append((features_df, label_dict['Benign']))
+                    # Update models if buffer size threshold is reached
+                    if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
+                        self.update_models()
+                    return  # Skip further processing for benign traffic
+
             if features:
                 features_df = pd.DataFrame([features], columns=self.features)
                 try:
@@ -194,36 +230,9 @@ class SimpleSwitch13(app_manager.RyuApp):
 
                         # Aggregate and update models periodically
                         if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
-                            X_rf, y_rf = zip(*self.local_data_buffer_rf)
-                            X_rf = pd.concat(X_rf)
-                            self.rf_model.fit(X_rf, y_rf)  # Ensure local training happens here
-
-                            # Save the model to a file and send it to the server
-                            self.send_model_to_server(self.rf_model, 'rf')
-                            self.local_data_buffer_rf = []  # Clear buffer after update
-                            self.logger.info("RandomForest model sent to server via federated learning")
-                            self.logger.info("XGBoost model sent to server via federated learning")
-                        #if len(self.local_data_buffer_xgb) >= self.local_data_buffer_size:
-                            # X_xgb, y_xgb = zip(*self.local_data_buffer_xgb)
-                            # X_xgb = pd.concat(X_xgb)
-                            # self.xgb_model.fit(X_xgb, y_xgb)  # Ensure local training happens here
-
-                            # # Save the model to a file and send it to the server
-                            # self.send_model_to_server(self.xgb_model, 'xgb')
-                            # self.local_data_buffer_xgb = []  # Clear buffer after update
-
-
-                    else:
-                        self.logger.info(f"Normal traffic from {src}.")
-                        self.ht_model.learn_one(features, label_dict['Benign'])  # Learn benign class as 0
-                        self.orf_model.learn_one(features, label_dict['Benign'])
-                        self.local_data_buffer_rf.append((features_df, label_dict['Benign']))
-                        self.local_data_buffer_xgb.append((features_df, label_dict['Benign']))
-
+                            self.update_models()
                 except Exception as e:
                     self.logger.error(f"Error in prediction: {e}")
-            else:
-                self.logger.error("No valid feature data received in packet.")
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -232,6 +241,18 @@ class SimpleSwitch13(app_manager.RyuApp):
         out = parser.OFPPacketOut(datapath=datapath, buffer_id=msg.buffer_id,
                                   in_port=in_port, actions=actions, data=data)
         datapath.send_msg(out)
+
+    def update_models(self):
+        """Helper function to aggregate and send model updates."""
+        X_rf, y_rf = zip(*self.local_data_buffer_rf)
+        X_rf = pd.concat(X_rf)
+        self.rf_model.fit(X_rf, y_rf)  # Ensure local training happens here
+
+        # Save the model to a file and send it to the server
+        self.send_model_to_server(self.rf_model, 'rf')
+        self.local_data_buffer_rf = []  # Clear buffer after update
+        self.logger.info("RandomForest model sent to server via federated learning")
+        self.logger.info("XGBoost model sent to server via federated learning")
 
     def send_model_to_server(self, model, model_type):
         """
@@ -257,4 +278,3 @@ class SimpleSwitch13(app_manager.RyuApp):
             # Clean up: remove the temporary model file after sending
             if os.path.exists(model_filename):
                 os.remove(model_filename)
-

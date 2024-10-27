@@ -9,18 +9,19 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 # Define base features for each attack type and benign traffic
 base_attack_features = {
-    1: {'Tot Fwd Pkts': 1, 'TotLen Fwd Pkts': 84, 'Bwd Pkt Len Max': 166, 'Flow Pkts/s': 54.66, 'Fwd IAT Mean': 0, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 1024, 'Fwd Seg Size Min': 8, 'Idle Max': 0},  # Benign
-    2: {'Tot Fwd Pkts': 1, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 2000000.0, 'Fwd IAT Mean': 0, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 26883, 'Fwd Seg Size Min': 40, 'Idle Max': 0},  # FTP-BruteForce
-    3: {'Tot Fwd Pkts': 1, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 285714.29, 'Fwd IAT Mean': 0, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 1, 'Init Fwd Win Byts': 241, 'Fwd Seg Size Min': 32, 'Idle Max': 0},  # SSH-Bruteforce
-    4: {'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 2463.05, 'Fwd IAT Mean': 812, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 32738, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # DDOS attack-HOIC
-    5: {'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 3717.47, 'Fwd IAT Mean': 538, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 2052, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # Bot
-    6: {'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 0.09, 'Fwd IAT Mean': 23076676, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 221, 'Fwd Seg Size Min': 32, 'Idle Max': 23076676},  # DoS-GoldenEye
-    7: {'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 16, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 0.04, 'Fwd IAT Mean': 99999620, 'Bwd IAT Tot': 99999616, 'Bwd IAT Mean': 99999616, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 211, 'Fwd Seg Size Min': 32, 'Idle Max': 99999614},  # DoS-Slowloris
-    8: {'Tot Fwd Pkts': -11259, 'TotLen Fwd Pkts': 3834016, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 1000.33, 'Fwd IAT Mean': 999.68, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 1024, 'Fwd Seg Size Min': 8, 'Idle Max': 0},  # DDOS-LOIC-UDP
-    9: {'Tot Fwd Pkts': 5, 'TotLen Fwd Pkts': 646, 'Bwd Pkt Len Max': 364, 'Flow Pkts/s': 1.6, 'Fwd IAT Mean': 1252033.8, 'Bwd IAT Tot': 3226, 'Bwd IAT Mean': 1613, 'RST Flag Cnt': 1, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 8192, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # Brute Force -Web
-    10: {'Tot Fwd Pkts': 203, 'TotLen Fwd Pkts': 56330, 'Bwd Pkt Len Max': 1936, 'Flow Pkts/s': 5.41, 'Fwd IAT Mean': 280986.28, 'Bwd IAT Tot': 56761420, 'Bwd IAT Mean': 551081.75, 'RST Flag Cnt': 1, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 8192, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # Brute Force -XSS
-    11: {'Tot Fwd Pkts': 5, 'TotLen Fwd Pkts': 635, 'Bwd Pkt Len Max': 4012, 'Flow Pkts/s': 1.8, 'Fwd IAT Mean': 18261.75, 'Bwd IAT Tot': 5013865, 'Bwd IAT Mean': 1671288.33, 'RST Flag Cnt': 1, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 8192, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # SQL Injection
+    1: {'id': 1, 'Tot Fwd Pkts': 1, 'TotLen Fwd Pkts': 84, 'Bwd Pkt Len Max': 166, 'Flow Pkts/s': 54.66, 'Fwd IAT Mean': 0, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 1024, 'Fwd Seg Size Min': 8, 'Idle Max': 0},  # Benign
+    2: {'id': 2, 'Tot Fwd Pkts': 1, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 2000000.0, 'Fwd IAT Mean': 0, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 26883, 'Fwd Seg Size Min': 40, 'Idle Max': 0},  # FTP-BruteForce
+    3: {'id': 3, 'Tot Fwd Pkts': 1, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 285714.29, 'Fwd IAT Mean': 0, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 1, 'Init Fwd Win Byts': 241, 'Fwd Seg Size Min': 32, 'Idle Max': 0},  # SSH-Bruteforce
+    4: {'id': 4, 'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 2463.05, 'Fwd IAT Mean': 812, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 32738, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # DDOS attack-HOIC
+    5: {'id': 5, 'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 3717.47, 'Fwd IAT Mean': 538, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 2052, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # Bot
+    6: {'id': 6, 'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 0, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 0.09, 'Fwd IAT Mean': 23076676, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 221, 'Fwd Seg Size Min': 32, 'Idle Max': 23076676},  # DoS-GoldenEye
+    7: {'id': 7, 'Tot Fwd Pkts': 2, 'TotLen Fwd Pkts': 16, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 0.04, 'Fwd IAT Mean': 99999620, 'Bwd IAT Tot': 99999616, 'Bwd IAT Mean': 99999616, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 211, 'Fwd Seg Size Min': 32, 'Idle Max': 99999614},  # DoS-Slowloris
+    8: {'id': 8, 'Tot Fwd Pkts': -11259, 'TotLen Fwd Pkts': 3834016, 'Bwd Pkt Len Max': 0, 'Flow Pkts/s': 1000.33, 'Fwd IAT Mean': 999.68, 'Bwd IAT Tot': 0, 'Bwd IAT Mean': 0, 'RST Flag Cnt': 0, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 1024, 'Fwd Seg Size Min': 8, 'Idle Max': 0},  # DDOS-LOIC-UDP
+    9: {'id': 9, 'Tot Fwd Pkts': 5, 'TotLen Fwd Pkts': 646, 'Bwd Pkt Len Max': 364, 'Flow Pkts/s': 1.6, 'Fwd IAT Mean': 1252033.8, 'Bwd IAT Tot': 3226, 'Bwd IAT Mean': 1613, 'RST Flag Cnt': 1, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 8192, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # Brute Force -Web
+    10: {'id': 10, 'Tot Fwd Pkts': 203, 'TotLen Fwd Pkts': 56330, 'Bwd Pkt Len Max': 1936, 'Flow Pkts/s': 5.41, 'Fwd IAT Mean': 280986.28, 'Bwd IAT Tot': 56761420, 'Bwd IAT Mean': 551081.75, 'RST Flag Cnt': 1, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 8192, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # Brute Force -XSS
+    11: {'id': 11, 'Tot Fwd Pkts': 5, 'TotLen Fwd Pkts': 635, 'Bwd Pkt Len Max': 4012, 'Flow Pkts/s': 1.8, 'Fwd IAT Mean': 18261.75, 'Bwd IAT Tot': 5013865, 'Bwd IAT Mean': 1671288.33, 'RST Flag Cnt': 1, 'URG Flag Cnt': 0, 'Init Fwd Win Byts': 8192, 'Fwd Seg Size Min': 20, 'Idle Max': 0},  # SQL Injection
 }
+
 
 # Map attack IDs to names for logging purposes
 attack_names = {
@@ -70,7 +71,7 @@ def generate_random_features(attack_id):
 # Function to simulate sending a packet with random features for the attack
 def send_custom_packet(src_ip, dst_ip, protocol, attack_id, repeat=1):
     logging.info(f"Starting {attack_names[attack_id]} attack simulation (ID {attack_id})")
-    
+
     for _ in range(repeat):
         features = generate_random_features(attack_id)
         payload = json.dumps(features).encode('utf-8')  # Convert features to JSON-encoded bytes
@@ -114,7 +115,7 @@ if __name__ == "__main__":
     # Prompt user for IP addresses
     src_ip = input("Enter source IP address (default 10.0.0.1): ") or "10.0.0.1"
     dst_ip = input("Enter destination IP address (default 10.0.0.2): ") or "10.0.0.2"
-    
+
     # Run the simulation 100 times to train the online models
     # for i in range(100):
     #     logging.info(f"Starting iteration {i+1}/100")
