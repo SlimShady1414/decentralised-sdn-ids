@@ -244,15 +244,26 @@ class SimpleSwitch13(app_manager.RyuApp):
 
     def update_models(self):
         """Helper function to aggregate and send model updates."""
-        X_rf, y_rf = zip(*self.local_data_buffer_rf)
-        X_rf = pd.concat(X_rf)
-        self.rf_model.fit(X_rf, y_rf)  # Ensure local training happens here
+        # Aggregate and update RF and XGB models with all buffered data, including zero-day attacks
+        if self.local_data_buffer_rf:
+            X_rf, y_rf = zip(*self.local_data_buffer_rf)
+            X_rf = pd.concat(X_rf)
+            self.rf_model.fit(X_rf, y_rf)  # Local training on buffered data
 
-        # Save the model to a file and send it to the server
-        self.send_model_to_server(self.rf_model, 'rf')
-        self.local_data_buffer_rf = []  # Clear buffer after update
-        self.logger.info("RandomForest model sent to server via federated learning")
-        self.logger.info("XGBoost model sent to server via federated learning")
+            # Send model to the server
+            self.send_model_to_server(self.rf_model, 'rf')
+            self.local_data_buffer_rf = []  # Clear buffer after update
+            self.logger.info("RandomForest model sent to server via federated learning")
+
+        if self.local_data_buffer_xgb:
+            X_xgb, y_xgb = zip(*self.local_data_buffer_xgb)
+            X_xgb = pd.concat(X_xgb)
+            self.xgb_model.fit(X_xgb, y_xgb)  # Local training on buffered data
+
+            # Send model to the server
+            self.send_model_to_server(self.xgb_model, 'xgb')
+            self.local_data_buffer_xgb = []  # Clear buffer after update
+            self.logger.info("XGBoost model sent to server via federated learning")
 
     def send_model_to_server(self, model, model_type):
         """
@@ -269,11 +280,11 @@ class SimpleSwitch13(app_manager.RyuApp):
 
             response = requests.post(f'http://{FED_SERVER_IP}:{FED_SERVER_PORT}/update_model', files=files, data=data)
             if response.status_code == 200:
-                self.logger.info("Model file sent successfully to the server.")
+                self.logger.info(f"{model_type} model sent successfully to the server.")
             else:
-                self.logger.error(f"Failed to send {model_type} model file to the server. Status Code: {response.status_code}")
+                self.logger.error(f"Failed to send {model_type} model to the server. Status Code: {response.status_code}")
         except Exception as e:
-            self.logger.error(f"Error while sending {model_type} model file to server: {e}")
+            self.logger.error(f"Error while sending {model_type} model to server: {e}")
         finally:
             # Clean up: remove the temporary model file after sending
             if os.path.exists(model_filename):
