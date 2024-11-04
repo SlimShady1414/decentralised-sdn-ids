@@ -173,16 +173,20 @@ class SimpleSwitch13(app_manager.RyuApp):
             if packet_id is not None:
                 # Check if the packet ID is not in the known list (1-11)
                 if packet_id not in self.known_attack_ids:
-                    self.logger.info(f"Unknown attack detected: Packet ID {packet_id}")
+                    self.logger.info(f"Unknown (zero-day) attack detected: Packet ID {packet_id}")
                     if features:
                         features_df = pd.DataFrame([features], columns=self.features)
-                        self.logger.info(f"Packet Features Extracted: {features_df}")
-                        # Add unknown attack features to the buffer
-                        self.local_data_buffer_rf.append((features_df, random.rantint(1,12)))
-                        self.local_data_buffer_xgb.append((features_df, -1))
-                        # Update models if buffer size threshold is reached
+
+                        # Learn from zero-day attack, labeled as -1
+                        self.ht_model.learn_one(features, -1)
+                        self.orf_model.learn_one(features, -1)
+                        self.local_data_buffer_rf.append((features_df, -1))  # Buffer as -1 for zero-day attack
+
+        # Trigger model update if buffer size threshold is met
                         if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
                             self.update_models()
+
+
                     #return  # Skip further processing for unknown attacks
 
                 # If the ID is 1, treat it as benign
@@ -213,7 +217,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                         max_pred = max(rf_pred, xgb_pred, ht_pred, orf_pred)
                         self.ht_model.learn_one(features, max_pred)
                         self.orf_model.learn_one(features, max_pred)
-
+                        self.block_traffic(datapath, src)
                         # Log the attack type based on the current count
                         self.current_attack_count += 1
                         attack_name = self.attack_names[self.attack_index - 1]  # Adjusted indexing
@@ -245,17 +249,17 @@ class SimpleSwitch13(app_manager.RyuApp):
 
     def update_models(self):
         """Helper function to aggregate and send model updates."""
-        # Aggregate and update RF and XGB models with all buffered data, including zero-day attacks
         if self.local_data_buffer_rf:
             X_rf, y_rf = zip(*self.local_data_buffer_rf)
             X_rf = pd.concat(X_rf)
             self.rf_model.fit(X_rf, y_rf)  # Local training on buffered data
 
-            # Send model to the server
+        # Send model to the server
             self.send_model_to_server(self.rf_model, 'rf')
             self.local_data_buffer_rf = []  # Clear buffer after update
             self.logger.info("RandomForest model sent to server via federated learning")
-            self.logger.info("XGBoost model sent to server via federated learning")
+
+            #self.logger.info("XGBoost model sent to server via federated learning")
         if self.local_data_buffer_xgb:
             X_xgb, y_xgb = zip(*self.local_data_buffer_xgb)
             X_xgb = pd.concat(X_xgb)
@@ -290,3 +294,10 @@ class SimpleSwitch13(app_manager.RyuApp):
             # Clean up: remove the temporary model file after sending
             if os.path.exists(model_filename):
                 os.remove(model_filename)
+    def block_traffic(self, datapath, mac):
+        ofproto = datapath.ofproto
+        parser = datapath.ofproto_parser
+        match = parser.OFPMatch(eth_src=mac)
+        actions = []
+        self.add_flow(datapath, 1, match, actions)
+        self.logger.info('Blocking traffic from %s', mac)
