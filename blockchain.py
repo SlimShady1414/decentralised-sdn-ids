@@ -38,7 +38,7 @@ class Blockchain:
         previous_block = self.chain[-1]
         new_block = Block(len(self.chain), model_paths, previous_block.hash, version)
         self.chain.append(new_block)
-        print(f"Block {new_block.index} added to the blockchain with version {version} and hash {new_block.hash}")
+        print(f"New block added: Index={new_block.index}, Version={new_block.version}, Hash={new_block.hash}")
         return new_block
 
     def get_chain(self):
@@ -56,4 +56,3 @@ class Blockchain:
         """Display all blocks in the blockchain."""
         for block in self.chain:
             print(block)
-

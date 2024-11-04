@@ -176,13 +176,14 @@ class SimpleSwitch13(app_manager.RyuApp):
                     self.logger.info(f"Unknown attack detected: Packet ID {packet_id}")
                     if features:
                         features_df = pd.DataFrame([features], columns=self.features)
+                        self.logger.info(f"Packet Features Extracted: {features_df}")
                         # Add unknown attack features to the buffer
-                        self.local_data_buffer_rf.append((features_df, -1))  # -1 label for unknown attacks
+                        self.local_data_buffer_rf.append((features_df, random.rantint(1,12)))
                         self.local_data_buffer_xgb.append((features_df, -1))
                         # Update models if buffer size threshold is reached
                         if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
                             self.update_models()
-                    return  # Skip further processing for unknown attacks
+                    #return  # Skip further processing for unknown attacks
 
                 # If the ID is 1, treat it as benign
                 if packet_id == 1:
@@ -195,7 +196,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                     # Update models if buffer size threshold is reached
                     if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
                         self.update_models()
-                    return  # Skip further processing for benign traffic
+                    #return  # Skip further processing for benign traffic
 
             if features:
                 features_df = pd.DataFrame([features], columns=self.features)
@@ -205,7 +206,7 @@ class SimpleSwitch13(app_manager.RyuApp):
                     orf_pred = self.orf_model.predict_one(features)
                     ht_pred = self.ht_model.predict_one(features)
                     self.logger.info(f"RF {rf_pred} XGB {xgb_pred} HT {ht_pred} ORF {orf_pred}")
-
+                    self.logger.info(f"Packet Features Extracted: {features_df}")
                     # Check for benign traffic using label 0
                     if rf_pred != label_dict['Benign'] or xgb_pred != label_dict['Benign'] or orf_pred != label_dict['Benign'] or ht_pred != label_dict['Benign']:
                         self.logger.info(f"Attack detected from {src}, blocking traffic.")
@@ -254,7 +255,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             self.send_model_to_server(self.rf_model, 'rf')
             self.local_data_buffer_rf = []  # Clear buffer after update
             self.logger.info("RandomForest model sent to server via federated learning")
-
+            self.logger.info("XGBoost model sent to server via federated learning")
         if self.local_data_buffer_xgb:
             X_xgb, y_xgb = zip(*self.local_data_buffer_xgb)
             X_xgb = pd.concat(X_xgb)

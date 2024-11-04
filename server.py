@@ -10,7 +10,7 @@ app = Flask(__name__)
 # Define initial model paths
 initial_model_paths = {
     'rf': '/mnt/SharedCapstone/rf_model.joblib',
-    'xgb': '/mnt/SharedCapstone/xgb_model.joblib',
+    #'xgb': '/mnt/SharedCapstone/xgb_model.joblib',
     'orf': '/mnt/SharedCapstone/orf_model.joblib',
     'ht': '/mnt/SharedCapstone/ht_model.joblib'
 }
@@ -21,7 +21,7 @@ blockchain = Blockchain(initial_model_paths)
 # Load initial models into global_model dictionary
 global_model = {
     'rf': joblib.load(initial_model_paths['rf']),
-    'xgb': joblib.load(initial_model_paths['xgb']),
+    #'xgb': joblib.load(initial_model_paths['xgb']),
     'orf': joblib.load(initial_model_paths['orf']),
     'ht': joblib.load(initial_model_paths['ht'])
 }
@@ -53,34 +53,34 @@ class FederatedAggregator:
 
         return global_model['rf']
 
-    def aggregate_xgb(self):
-        """Incremental learning for XGBoost."""
-        if len(self.local_models) == 0:
-            return None
+    #def aggregate_xgb(self):
+     #   """Incremental learning for XGBoost."""
+      #  if len(self.local_models) == 0:
+       #     return None
 
-        if global_model['xgb'] is None:
-            global_model['xgb'] = XGBClassifier(n_estimators=10, use_label_encoder=False, num_class=self.num_classes)
-            global_model['xgb'].fit(np.zeros((1, 1)), [0])
+        #if global_model['xgb'] is None:
+         #   global_model['xgb'] = XGBClassifier(n_estimators=10, use_label_encoder=False, num_class=self.num_classes)
+          #  global_model['xgb'].fit(np.zeros((1, 1)), [0])
 
-        for model in self.local_models:
-            global_model['xgb'].get_booster().copy().add(model.get_booster())
+        #for model in self.local_models:
+         #   global_model['xgb'].get_booster().copy().add(model.get_booster())
 
-        if len(global_model['xgb'].get_booster().get_dump()) > self.max_trees:
-            global_model['xgb'].get_booster().prune(self.max_trees)
+        #if len(global_model['xgb'].get_booster().get_dump()) > self.max_trees:
+         #   global_model['xgb'].get_booster().prune(self.max_trees)
 
-        return global_model['xgb']
+        #return global_model['xgb']
 
     def aggregate(self):
         if self.model_type == 'rf':
             return self.aggregate_rf()
-        elif self.model_type == 'xgb':
-            return self.aggregate_xgb()
+       # elif self.model_type == 'xgb':
+        #    return self.aggregate_xgb()
         return None
 
 
 # Initialize aggregators for each model type
 rf_aggregator = FederatedAggregator('rf')
-xgb_aggregator = FederatedAggregator('xgb')
+#xgb_aggregator = FederatedAggregator('xgb')
 orf_aggregator = FederatedAggregator('orf')
 ht_aggregator = FederatedAggregator('ht')
 
@@ -97,8 +97,8 @@ def update_model():
 
         if model_type == 'rf':
             rf_aggregator.update_local_model(local_model)
-        elif model_type == 'xgb':
-            xgb_aggregator.update_local_model(local_model)
+        #elif model_type == 'xgb':
+         #   xgb_aggregator.update_local_model(local_model)
         elif model_type == 'orf':
             orf_aggregator.update_local_model(local_model)
         elif model_type == 'ht':
@@ -120,7 +120,7 @@ def aggregate_models():
         # Paths for new aggregated models
         model_paths = {
             'rf': f"/mnt/SharedCapstone/rf_model_v{len(blockchain.chain)}.joblib",
-            'xgb': f"/mnt/SharedCapstone/xgb_model_v{len(blockchain.chain)}.joblib",
+            #'xgb': f"/mnt/SharedCapstone/xgb_model_v{len(blockchain.chain)}.joblib",
             'orf': f"/mnt/SharedCapstone/orf_model_v{len(blockchain.chain)}.joblib",
             'ht': f"/mnt/SharedCapstone/ht_model_v{len(blockchain.chain)}.joblib"
         }
