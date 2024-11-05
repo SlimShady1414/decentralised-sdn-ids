@@ -8,6 +8,8 @@ This project involves implementing a novel intrusion detection system using adva
 - Mininet
 - Ryu
 - IPFS
+
+The dataset used in the project is the [CIC-IDS 2018](https://www.unb.ca/cic/datasets/ids-2018.html) dataset.
 ## Setup Instructions
 Use the package manager [pip](https://pip.pypa.io/en/stable/) to install dependencies.
 ### 1. Install Ryu and Mininet
