@@ -16,14 +16,14 @@ import joblib
 import os
 import random
 
-# Set up logging for better debug information
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Define the IP address of the federated server for local testing
+
 FED_SERVER_IP = '127.0.0.1'  # Use localhost for testing
 FED_SERVER_PORT = 8000  # Port for the server to listen
 
-# Increase recursion limit to avoid RecursionError
+
 sys.setrecursionlimit(10000)
 
 # Full label mapping for attack types as used in training
@@ -48,7 +48,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-        # Load models
+
         self.rf_model = joblib.load('rf_model.joblib')
         self.xgb_model = joblib.load('xgb_model.joblib')
         self.orf_model = joblib.load('orf_model.joblib')
@@ -60,7 +60,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.enable_prediction = True  # Enable prediction during control traffic
 
-        # Known attack IDs (1-11), with 1 being benign
+
         self.known_attack_ids = list(range(1, 12))
 
         # Features used in the model
@@ -75,8 +75,8 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.local_data_buffer_xgb = []
         self.local_data_buffer_size = 100  # Buffer size threshold for sending models
 
-        # Attack simulation counters
-        self.attack_index = label_dict['FTP-BruteForce']  # Start from FTP-BruteForce
+
+        self.attack_index = label_dict['FTP-BruteForce']
         self.current_attack_count = 0
         self.attack_counts = [
             30,  # FTP-BruteForce
@@ -90,8 +90,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             15,  # XSS
             20   # SQL Injection
         ]
-        self.attack_names = list(label_dict.keys())[1:]  # Skip 'Benign' for attack names
-
+        self.attack_names = list(label_dict.keys())[1:]
     def extract_features(self, payload):
         try:
             features = json.loads(payload.decode('utf-8'))
@@ -171,7 +170,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         if raw_payload:
             features, packet_id = self.extract_features(raw_payload)
             if packet_id is not None:
-                # Check if the packet ID is not in the known list (1-11)
+
                 if packet_id not in self.known_attack_ids:
                     self.logger.info(f"Unknown (zero-day) attack detected: Packet ID {packet_id}")
                     if features:
@@ -189,7 +188,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
                     #return  # Skip further processing for unknown attacks
 
-                # If the ID is 1, treat it as benign
+
                 if packet_id == 1:
                     self.logger.info(f"Normal traffic from {src}.")
                     self.ht_model.learn_one(features, label_dict['Benign'])  # Learn benign class as 0
@@ -218,9 +217,9 @@ class SimpleSwitch13(app_manager.RyuApp):
                         self.ht_model.learn_one(features, max_pred)
                         self.orf_model.learn_one(features, max_pred)
                         self.block_traffic(datapath, src)
-                        # Log the attack type based on the current count
+
                         self.current_attack_count += 1
-                        attack_name = self.attack_names[self.attack_index - 1]  # Adjusted indexing
+                        attack_name = self.attack_names[self.attack_index - 1]
                         if self.current_attack_count <= self.attack_counts[self.attack_index - 1]:
                             self.logger.info(f"Attack type: {attack_name}")
                         if self.current_attack_count == self.attack_counts[self.attack_index - 1]:

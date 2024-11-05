@@ -108,10 +108,10 @@ joblib.dump(rf_model, 'rf_model.joblib')
 print("Random Forest model saved as 'rf_model.joblib'")
 
 # Predict and evaluate Random Forest
-#y_pred_rf = rf_model.predict(X_test)
-#print("RF Accuracy:", accuracy_score(y_test, y_pred_rf))
-#print("Random Forest classification report:\n", classification_report(y_test, y_pred_rf))
-#print("Random Forest confusion matrix:\n", confusion_matrix(y_test, y_pred_rf))
+y_pred_rf = rf_model.predict(X_test)
+print("RF Accuracy:", accuracy_score(y_test, y_pred_rf))
+print("Random Forest classification report:\n", classification_report(y_test, y_pred_rf))
+print("Random Forest confusion matrix:\n", confusion_matrix(y_test, y_pred_rf))
 
 # Train XGBoost model
 print("Training XGBoost model...")
@@ -123,10 +123,10 @@ joblib.dump(xgb_model, 'xgb_model.joblib')
 print("XGBoost model saved as 'xgb_model.joblib'")
 
 # Predict and evaluate XGBoost
-#y_pred_xgb = xgb_model.predict(X_test)
-#print("XGB Accuracy:", accuracy_score(y_test_xgb, y_pred_xgb))
-#print("XGBoost classification report:\n", classification_report(y_test_xgb, y_pred_xgb))
-#print("XGBoost confusion matrix:\n", confusion_matrix(y_test_xgb, y_pred_xgb))
+y_pred_xgb = xgb_model.predict(X_test)
+print("XGB Accuracy:", accuracy_score(y_test_xgb, y_pred_xgb))
+print("XGBoost classification report:\n", classification_report(y_test_xgb, y_pred_xgb))
+print("XGBoost confusion matrix:\n", confusion_matrix(y_test_xgb, y_pred_xgb))
 
 # Convert to dictionary format for River (online learning library)
 X_train_dict = X_train_res.to_dict(orient='records')
@@ -147,8 +147,8 @@ for xi, yi in zip(X_test_dict, y_test):  # Stream test data one by one
     orf_preds.append(orf_pred)
     orf_model.learn_one(xi, yi)  # Update the model incrementally after each prediction
 
-#print("ORF Accuracy:", accuracy_score(y_test, orf_preds))
-#print("ORF Confusion Matrix:\n", confusion_matrix(y_test, orf_preds))
+print("ORF Accuracy:", accuracy_score(y_test, orf_preds))
+print("ORF Confusion Matrix:\n", confusion_matrix(y_test, orf_preds))
 
 # Save the ORF model
 joblib.dump(orf_model, 'orf_model.joblib')
@@ -169,37 +169,37 @@ for xi, yi in zip(X_test_dict, y_test):  # Stream test data one by one
     ht_preds.append(ht_pred)
     ht_model.learn_one(xi, yi)  # Update the model incrementally after each prediction
 
-#rint("HT Accuracy:", accuracy_score(y_test, ht_preds))
-#print("HT Confusion Matrix:\n", confusion_matrix(y_test, ht_preds))
+print("HT Accuracy:", accuracy_score(y_test, ht_preds))
+print("HT Confusion Matrix:\n", confusion_matrix(y_test, ht_preds))
 
 # Save the HT model
 joblib.dump(ht_model, 'ht_model.joblib')
 print("HT model saved as 'ht_model.joblib'")
 
-# Custom evaluation: Pass one record per label to all four models and print predictions
-#print("Performing custom evaluation for all models...")
-#unique_labels = y_test.unique()
-#for label in unique_labels:
-#    sample_record = X_test[y_test == label].iloc[0].to_dict()
-#    print(f"Record for label {label}:\n", sample_record)#
+#Custom evaluation: Pass one record per label to all four models and print predictions
+print("Performing custom evaluation for all models...")
+unique_labels = y_test.unique()
+for label in unique_labels:
+   sample_record = X_test[y_test == label].iloc[0].to_dict()
+   print(f"Record for label {label}:\n", sample_record)#
 
-    # Prediction using Random Forest
-#    rf_pred = rf_model.predict([list(sample_record.values())])
-#    print(f"Random Forest prediction for label {label}: {rf_pred}")
+    #Prediction using Random Forest
+   rf_pred = rf_model.predict([list(sample_record.values())])
+   print(f"Random Forest prediction for label {label}: {rf_pred}")
 
-    # Prediction using XGBoost
-#    xgb_pred = xgb_model.predict([list(sample_record.values())])
-#    print(f"XGBoost prediction for label {label}: {xgb_pred}")
+   # Prediction using XGBoost
+   xgb_pred = xgb_model.predict([list(sample_record.values())])
+   print(f"XGBoost prediction for label {label}: {xgb_pred}")
 
-    # Prediction using ORF
-#    orf_pred = orf_model.predict_one(sample_record)
-#    print(f"ORF prediction for label {label}: {orf_pred}")
+   # Prediction using ORF
+   orf_pred = orf_model.predict_one(sample_record)
+   print(f"ORF prediction for label {label}: {orf_pred}")
 
-    # Prediction using HT
-#    ht_pred = ht_model.predict_one(sample_record)
-#    print(f"HT prediction for label {label}: {ht_pred}")
+   # Prediction using HT
+   ht_pred = ht_model.predict_one(sample_record)
+   print(f"HT prediction for label {label}: {ht_pred}")
 
-# End of process
-#print("Process complete.")
+#End of process
+print("Process complete.")
 
 

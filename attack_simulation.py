@@ -4,7 +4,7 @@ import time
 import random
 import logging
 
-# Setup logging
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 # Define base features for each attack type and benign traffic
@@ -42,7 +42,7 @@ attack_names = {
 def generate_random_features(attack_id):
     features = base_attack_features[attack_id].copy()
 
-    # Randomize certain features within a realistic range
+
     if attack_id == 1:  # Benign
         features['TotLen Fwd Pkts'] = random.randint(60, 100)
         features['Flow Pkts/s'] = random.uniform(40, 70)
@@ -76,7 +76,7 @@ def send_custom_packet(src_ip, dst_ip, protocol, attack_id, repeat=1):
         features = generate_random_features(attack_id)
         payload = json.dumps(features).encode('utf-8')  # Convert features to JSON-encoded bytes
 
-        # Define protocol for the packet (TCP/UDP)
+
         if protocol.lower() == 'tcp':
             pkt = IP(src=src_ip, dst=dst_ip) / TCP(dport=80) / Raw(load=payload)
         elif protocol.lower() == 'udp':
