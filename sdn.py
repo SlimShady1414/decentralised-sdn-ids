@@ -16,14 +16,14 @@ import joblib
 import os
 import random
 
-
+# Set up logging for better debug information
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-
+# Define the IP address of the federated server for local testing
 FED_SERVER_IP = '127.0.0.1'  # Use localhost for testing
 FED_SERVER_PORT = 8000  # Port for the server to listen
 
-
+# Increase recursion limit to avoid RecursionError
 sys.setrecursionlimit(10000)
 
 # Full label mapping for attack types as used in training
@@ -48,7 +48,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
 
-
+        # Load models
         self.rf_model = joblib.load('rf_model.joblib')
         self.xgb_model = joblib.load('xgb_model.joblib')
         self.orf_model = joblib.load('orf_model.joblib')
@@ -60,7 +60,7 @@ class SimpleSwitch13(app_manager.RyuApp):
 
         self.enable_prediction = True  # Enable prediction during control traffic
 
-
+        # Known attack IDs (1-11), with 1 being benign
         self.known_attack_ids = list(range(1, 12))
 
         # Features used in the model
@@ -75,8 +75,8 @@ class SimpleSwitch13(app_manager.RyuApp):
         self.local_data_buffer_xgb = []
         self.local_data_buffer_size = 100  # Buffer size threshold for sending models
 
-
-        self.attack_index = label_dict['FTP-BruteForce']
+        # Attack simulation counters
+        self.attack_index = label_dict['FTP-BruteForce']  # Start from FTP-BruteForce
         self.current_attack_count = 0
         self.attack_counts = [
             30,  # FTP-BruteForce
@@ -90,7 +90,12 @@ class SimpleSwitch13(app_manager.RyuApp):
             15,  # XSS
             20   # SQL Injection
         ]
-        self.attack_names = list(label_dict.keys())[1:]
+        self.attack_names = list(label_dict.keys())[1:]  # Skip 'Benign' for attack names
+
+        # Add a counter for normal traffic logs
+        self.normal_log_count = 0
+        self.max_normal_logs = 10  # Number of normal logs to display first
+
     def extract_features(self, payload):
         try:
             features = json.loads(payload.decode('utf-8'))
@@ -170,73 +175,61 @@ class SimpleSwitch13(app_manager.RyuApp):
         if raw_payload:
             features, packet_id = self.extract_features(raw_payload)
             if packet_id is not None:
-
-                if packet_id not in self.known_attack_ids:
-                    self.logger.info(f"Unknown (zero-day) attack detected: Packet ID {packet_id}")
-                    if features:
-                        features_df = pd.DataFrame([features], columns=self.features)
-
-                        # Learn from zero-day attack, labeled as -1
-                        self.ht_model.learn_one(features, -1)
-                        self.orf_model.learn_one(features, -1)
-                        self.local_data_buffer_rf.append((features_df, -1))  # Buffer as -1 for zero-day attack
-
-        # Trigger model update if buffer size threshold is met
-                        if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
-                            self.update_models()
-
-
-                    #return  # Skip further processing for unknown attacks
-
-
+                # If the packet is normal traffic (ID=1)
                 if packet_id == 1:
-                    self.logger.info(f"Normal traffic from {src}.")
-                    self.ht_model.learn_one(features, label_dict['Benign'])  # Learn benign class as 0
-                    self.orf_model.learn_one(features, label_dict['Benign'])
-                    features_df = pd.DataFrame([features], columns=self.features)
-                    self.local_data_buffer_rf.append((features_df, label_dict['Benign']))
-                    self.local_data_buffer_xgb.append((features_df, label_dict['Benign']))
-                    # Update models if buffer size threshold is reached
-                    if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
-                        self.update_models()
-                    #return  # Skip further processing for benign traffic
+                    if self.normal_log_count < self.max_normal_logs:
+                        self.logger.info(f"Normal traffic from {src}.")
+                        if features:
+                            features_df = pd.DataFrame([features], columns=self.features)
+                            #self.logger.info(f"Packet Features Extracted: {features_df}")
+                            self.normal_log_count += 1  # Increment normal traffic counter
+                            return  # Skip processing attacks until normal logs are complete
 
-            if features:
-                features_df = pd.DataFrame([features], columns=self.features)
-                try:
-                    rf_pred = self.rf_model.predict(features_df)[0]
-                    xgb_pred = self.xgb_model.predict(features_df)[0]
-                    orf_pred = self.orf_model.predict_one(features)
-                    ht_pred = self.ht_model.predict_one(features)
-                    self.logger.info(f"RF {rf_pred} XGB {xgb_pred} HT {ht_pred} ORF {orf_pred}")
-                    self.logger.info(f"Packet Features Extracted: {features_df}")
-                    # Check for benign traffic using label 0
-                    if rf_pred != label_dict['Benign'] or xgb_pred != label_dict['Benign'] or orf_pred != label_dict['Benign'] or ht_pred != label_dict['Benign']:
-                        self.logger.info(f"Attack detected from {src}, blocking traffic.")
-                        max_pred = max(rf_pred, xgb_pred, ht_pred, orf_pred)
-                        self.ht_model.learn_one(features, max_pred)
-                        self.orf_model.learn_one(features, max_pred)
-                        self.block_traffic(datapath, src)
+                # Process attacks only after normal logs are displayed
+                if self.normal_log_count >= self.max_normal_logs:
+                    if packet_id not in self.known_attack_ids:
+                        self.logger.info(f"Unknown (zero-day) attack detected: Packet ID {packet_id}")
+                        if features:
+                            features_df = pd.DataFrame([features], columns=self.features)
+                            # Learn from zero-day attack, labeled as -1
+                            self.ht_model.learn_one(features, -1)
+                            self.orf_model.learn_one(features, -1)
+                            self.local_data_buffer_rf.append((features_df, -1))  # Buffer as -1 for zero-day attack
 
-                        self.current_attack_count += 1
-                        attack_name = self.attack_names[self.attack_index - 1]
-                        if self.current_attack_count <= self.attack_counts[self.attack_index - 1]:
-                            self.logger.info(f"Attack type: {attack_name}")
-                        if self.current_attack_count == self.attack_counts[self.attack_index - 1]:
-                            self.attack_index += 1
-                            self.current_attack_count = 0
-                            if self.attack_index > len(self.attack_counts):
-                                self.attack_index = 1
+                    else:
+                        # Attack processing logic
+                        if features:
+                            features_df = pd.DataFrame([features], columns=self.features)
+                            self.logger.info(f"Attack detected from {src}, blocking traffic.")
+                            self.logger.info(f"Attack type: {self.attack_names[self.attack_index - 1]}")
+                            rf_pred = self.rf_model.predict(features_df)[0]
+                            xgb_pred = self.xgb_model.predict(features_df)[0]
+                            orf_pred = self.orf_model.predict_one(features)
+                            ht_pred = self.ht_model.predict_one(features)
+                            self.local_data_buffer_rf.append((features_df, label_dict[self.attack_names[self.attack_index - 1]]))
+                            #self.logger.info(f"Packet Features Extracted: {features_df}")
+                            max_pred = max(rf_pred, xgb_pred, ht_pred, orf_pred)
 
-                        # Federated learning: Buffer data for RF and XGB
-                        self.local_data_buffer_rf.append((features_df, max_pred))
-                        self.local_data_buffer_xgb.append((features_df, max_pred))
+                            self.ht_model.learn_one(features, max_pred)
+                            self.orf_model.learn_one(features, max_pred)
+                            self.block_traffic(datapath, src)
+                            self.current_attack_count += 1
+                            attack_name = self.attack_names[self.attack_index - 1]  # Adjusted indexing
+                            if self.current_attack_count <= self.attack_counts[self.attack_index - 1]:
+                                self.logger.info(f"Attack type: {attack_name}")
+                            if self.current_attack_count == self.attack_counts[self.attack_index - 1]:
+                                self.attack_index += 1
+                                self.current_attack_count = 0
+                                if self.attack_index > len(self.attack_counts):
+                                    self.attack_index = 1
 
-                        # Aggregate and update models periodically
-                        if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
-                            self.update_models()
-                except Exception as e:
-                    self.logger.error(f"Error in prediction: {e}")
+                            # Federated learning: Buffer data for RF and XGB
+                            self.local_data_buffer_rf.append((features_df, label_dict[self.attack_names[self.attack_index - 1]]))
+                            self.local_data_buffer_xgb.append((features_df, label_dict[self.attack_names[self.attack_index - 1]]))
+
+                            # Aggregate and update models periodically
+                            if len(self.local_data_buffer_rf) >= self.local_data_buffer_size:
+                                self.update_models()
 
         data = None
         if msg.buffer_id == ofproto.OFP_NO_BUFFER:
@@ -253,20 +246,19 @@ class SimpleSwitch13(app_manager.RyuApp):
             X_rf = pd.concat(X_rf)
             self.rf_model.fit(X_rf, y_rf)  # Local training on buffered data
 
-        # Send model to the server
+            # Send model to the server
             self.send_model_to_server(self.rf_model, 'rf')
             self.local_data_buffer_rf = []  # Clear buffer after update
             self.logger.info("RandomForest model sent to server via federated learning")
 
-            #self.logger.info("XGBoost model sent to server via federated learning")
-        if self.local_data_buffer_xgb:
-            X_xgb, y_xgb = zip(*self.local_data_buffer_xgb)
-            X_xgb = pd.concat(X_xgb)
-            self.xgb_model.fit(X_xgb, y_xgb)  # Local training on buffered data
+        #if self.local_data_buffer_xgb:
+         #   X_xgb, y_xgb = zip(*self.local_data_buffer_xgb)
+          #  X_xgb = pd.concat(X_xgb)
+           # self.xgb_model.fit(X_xgb, y_xgb)  # Local training on buffered data
 
             # Send model to the server
-            self.send_model_to_server(self.xgb_model, 'xgb')
-            self.local_data_buffer_xgb = []  # Clear buffer after update
+            #self.send_model_to_server(self.xgb_model, 'xgb')
+            #self.local_data_buffer_xgb = []  # Clear buffer after update
             self.logger.info("XGBoost model sent to server via federated learning")
 
     def send_model_to_server(self, model, model_type):
@@ -293,6 +285,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             # Clean up: remove the temporary model file after sending
             if os.path.exists(model_filename):
                 os.remove(model_filename)
+
     def block_traffic(self, datapath, mac):
         ofproto = datapath.ofproto
         parser = datapath.ofproto_parser
@@ -300,3 +293,4 @@ class SimpleSwitch13(app_manager.RyuApp):
         actions = []
         self.add_flow(datapath, 1, match, actions)
         self.logger.info('Blocking traffic from %s', mac)
+
